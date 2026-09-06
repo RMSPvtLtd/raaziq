@@ -1,9 +1,12 @@
 import { useMemo } from "react"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { ArrowUpRight, Clock, MapPin, Package, Plus, ShieldWarning, Snowflake, UserCircle } from "@phosphor-icons/react"
 import { PageHeader } from "@/components/shared/PageHeader"
+import { NetworkMap } from "@/components/shared/NetworkMap"
+import { filterShipments, parseShipmentQuery } from "@/lib/shipment-filters"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { StageBadge } from "@/components/shared/StageBadge"
-import { LoadingState, ErrorState, EmptyState } from "@/components/shared/States"
+import { LoadingState, ErrorState } from "@/components/shared/States"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,85 +23,56 @@ const metricCards = [
 ] as const
 
 const metricTargets = {
-  active: "/shipments",
-  atRisk: "/shipments?at_risk=true",
-  onHold: "/shipments?on_hold=true",
-  readyToInvoice: "/shipments?stage=arrival&ready_to_invoice=true",
+  active: "all",
+  atRisk: "atRisk",
+  onHold: "onHold",
+  readyToInvoice: "readyToInvoice",
 } as const
 
 function shipmentHref(params: Record<string, string>) {
   return `/shipments?${new URLSearchParams(params).toString()}`
 }
 
-function formatMode(mode: string) {
-  return mode.charAt(0).toUpperCase() + mode.slice(1)
-}
-
-function SchematicNetwork({ lanes }: { lanes: ReturnType<typeof deriveOverviewData>["lanes"] }) {
-  if (lanes.length === 0) {
-    return <EmptyState icon={<MapPin size={28} />} title="No active lanes" description="Active shipment routes will appear here." />
-  }
-
-  const visibleLanes = lanes.slice(0, 6)
-  const height = Math.max(220, visibleLanes.length * 54 + 30)
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-border bg-muted/30 p-3">
-        <svg
-          viewBox={`0 0 640 ${height}`}
-          className="h-auto max-h-80 w-full"
-          role="img"
-          aria-labelledby="network-title network-description"
-        >
-          <title id="network-title">Schematic active shipment route network</title>
-          <desc id="network-description">A non-geographic diagram of active origin-to-destination lanes.</desc>
-          {visibleLanes.map((lane, index) => {
-            const y = 28 + index * 54
-            return (
-              <g key={lane.key}>
-                <line x1="150" y1={y} x2="490" y2={y} stroke="var(--accent-foreground)" strokeWidth="3" strokeLinecap="round" opacity="0.75" />
-                <circle cx="150" cy={y} r="7" fill="var(--card)" stroke="var(--accent-foreground)" strokeWidth="3" />
-                <circle cx="490" cy={y} r="7" fill="var(--card)" stroke="var(--accent-foreground)" strokeWidth="3" />
-                <text x="132" y={y - 13} textAnchor="end" fill="var(--foreground)" fontSize="14" fontWeight="600">{lane.origin}</text>
-                <text x="508" y={y - 13} fill="var(--foreground)" fontSize="14" fontWeight="600">{lane.destination}</text>
-                <text x="320" y={y + 5} textAnchor="middle" fill="var(--muted-foreground)" fontSize="12">{lane.active} active</text>
-              </g>
-            )
-          })}
-        </svg>
-      </div>
-      <ul className="grid gap-2 sm:grid-cols-2" aria-label="Active lane details">
-        {visibleLanes.map((lane) => (
-          <li key={lane.key}>
-            <Link to={shipmentHref({ origin: lane.origin, destination: lane.destination, mode: lane.mode })} className="block rounded-lg border border-border bg-background px-3 py-2.5 outline-none transition-colors hover:border-accent-foreground/50 hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring">
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-medium">{lane.origin} <span className="text-muted-foreground">→</span> {lane.destination}</span>
-              <Badge variant="secondary">{formatMode(lane.mode)}</Badge>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {lane.active} active{lane.atRisk ? ` · ${lane.atRisk} at risk` : ""}{lane.onHold ? ` · ${lane.onHold} on hold` : ""}
-            </p>
-            </Link>
-          </li>
-        ))}
-      </ul>
-      {lanes.length > visibleLanes.length && <p className="text-xs text-muted-foreground">Showing the {visibleLanes.length} busiest lanes of {lanes.length} active lanes.</p>}
-    </div>
-  )
-}
-
 export function OverviewPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const queryString = searchParams.toString()
+  const query = useMemo(() => parseShipmentQuery(new URLSearchParams(queryString)), [queryString])
   const { stages, loading: stagesLoading, labelFor } = useStages()
   const shipments = useAsync(() => shipmentsApi.list(), [])
   const customers = useAsync(() => customersApi.list(), [])
   const inquiries = useAsync(() => inquiriesApi.list(), [])
+  const visibleShipments = useMemo(() => filterShipments(shipments.data ?? [], customers.data ?? [], inquiries.data ?? [], query), [shipments.data, customers.data, inquiries.data, query])
   const data = useMemo(
-    () => deriveOverviewData(shipments.data ?? [], customers.data ?? [], inquiries.data ?? [], stages),
-    [shipments.data, customers.data, inquiries.data, stages],
+    () => deriveOverviewData(visibleShipments, customers.data ?? [], inquiries.data ?? [], stages),
+    [visibleShipments, customers.data, inquiries.data, stages],
   )
   const loading = shipments.loading || customers.loading || inquiries.loading || stagesLoading
   const error = shipments.error ?? customers.error ?? inquiries.error
+
+  function scopedHref(target: string, activeOnly = true) {
+    const next = new URLSearchParams(queryString)
+    if (activeOnly) next.set("active_only", "true")
+    else next.delete("active_only")
+    for (const [key, value] of new URLSearchParams(target.split("?")[1])) next.set(key, value)
+    return `/shipments?${next}`
+  }
+
+  function setFilter(key: string, value: string) {
+    const next = new URLSearchParams(queryString)
+    if (value === "all") next.delete(key)
+    else next.set(key, value)
+    setSearchParams(next)
+  }
+
+  function selectLane(key: string) {
+    const lane = data.lanes.find((item) => item.key === key)
+    if (!lane) return
+    const next = new URLSearchParams(queryString)
+    next.set("origin", lane.origin)
+    next.set("destination", lane.destination)
+    next.set("mode", lane.mode)
+    setSearchParams(next)
+  }
 
   function reloadOverview() {
     shipments.reload()
@@ -121,40 +95,54 @@ export function OverviewPage() {
         }
       />
 
-      <section aria-label="Shipment metrics" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="flex flex-wrap items-center gap-2" aria-label="Control Tower filters">
+        <Select value={query.mode ?? "all"} onValueChange={(value) => setFilter("mode", value)}><SelectTrigger className="w-36" aria-label="Filter network by mode"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All modes</SelectItem><SelectItem value="air">Air</SelectItem><SelectItem value="sea">Sea</SelectItem><SelectItem value="road">Road</SelectItem></SelectContent></Select>
+        <Select value={query.view} onValueChange={(value) => setFilter("view", value)}><SelectTrigger className="w-48" aria-label="Filter network by attention"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All active work</SelectItem><SelectItem value="attention">Needs attention</SelectItem><SelectItem value="atRisk">At risk</SelectItem><SelectItem value="onHold">On hold</SelectItem><SelectItem value="highPriority">High priority</SelectItem><SelectItem value="readyToInvoice">Ready to invoice</SelectItem></SelectContent></Select>
+        {(query.origin || query.destination) && <Badge variant="secondary">{query.origin ?? "Any origin"} → {query.destination ?? "Any destination"}</Badge>}
+        {queryString && <Button variant="ghost" onClick={() => setSearchParams({})}>Reset view</Button>}
+        <Button asChild variant="outline" className="sm:ml-auto"><Link to={scopedHref("/shipments")}>View matching shipments <ArrowUpRight size={16} /></Link></Button>
+      </div>
+
+      <section aria-label="Shipment metrics" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {metricCards.map(({ key, label, icon: Icon, tone }) => (
-          <Link key={key} to={metricTargets[key]} className="block rounded-xl outline-none transition-transform duration-150 hover:-translate-y-px focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" key={key} onClick={() => setFilter("view", metricTargets[key])} aria-pressed={query.view === metricTargets[key]} className="block rounded-xl text-left outline-none transition-transform duration-150 hover:-translate-y-px focus-visible:ring-2 focus-visible:ring-ring">
             <Card size="sm" className="h-full transition-colors duration-150 hover:border-accent-foreground/40">
               <CardContent className="flex items-center justify-between gap-4 py-1">
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">{label}</p>
                   <p className="mt-1 font-heading text-2xl font-semibold tabular-nums">{data.metrics[key]}</p>
                 </div>
                 <Icon size={24} weight="duotone" className={tone} aria-hidden="true" />
               </CardContent>
             </Card>
-          </Link>
+          </button>
         ))}
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.8fr)]">
-        <Card>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.8fr)_minmax(18rem,0.8fr)]">
+        <Card className="min-w-0">
           <CardHeader className="border-b">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <CardTitle>Network overview</CardTitle>
                 <CardDescription>Active lanes from current shipment and inquiry records.</CardDescription>
               </div>
-              <Badge variant="outline" className="gap-1.5"><MapPin size={13} /> Schematic route network</Badge>
+              <Badge variant="outline" className="gap-1.5"><MapPin size={13} /> Planned route network</Badge>
             </div>
           </CardHeader>
           <CardContent className="pt-4">
-            {/* ponytail: no coordinates or tile-provider keys, so this stays a truthful schematic; upgrade to MapLibre with an approved provider/geocoder when those inputs exist. */}
-            <SchematicNetwork lanes={data.lanes} />
+            <NetworkMap lanes={data.lanes} onSelect={selectLane} />
+            <ul className="mt-3 grid max-h-52 gap-2 overflow-y-auto sm:grid-cols-2" aria-label="Select an active lane">
+              {data.lanes.map((lane) => <li key={lane.key}><button type="button" onClick={() => selectLane(lane.key)} className="w-full rounded-lg border border-border px-3 py-3 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <span className="block font-medium">{lane.origin} → {lane.destination}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">{lane.mode.toUpperCase()} · {lane.active} active{lane.atRisk ? ` · ${lane.atRisk} at risk` : ""}{lane.onHold ? ` · ${lane.onHold} on hold` : ""}</span>
+              </button></li>)}
+            </ul>
+            {(query.origin || query.destination) && <section className="mt-5 border-t pt-4" aria-label="Selected lane shipments"><h3 className="mb-2 font-semibold">Jobs on this lane</h3><ul className="divide-y">{visibleShipments.filter((shipment) => !shipment.is_cancelled && shipment.stage !== "invoice_to_customer").map((shipment) => <li key={shipment.id}><Link className="flex flex-wrap items-center justify-between gap-2 rounded py-3 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring" to={`/shipments/${shipment.id}`}><span className="font-medium">{shipment.job_number ?? `Shipment #${shipment.id}`}</span><StageBadge stage={shipment.stage} /></Link></li>)}</ul></section>}
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="self-start">
           <CardHeader className="border-b">
             <CardTitle>Needs attention</CardTitle>
             <CardDescription>Risk, holds, and high-priority work sorted deterministically.</CardDescription>
@@ -197,7 +185,7 @@ export function OverviewPage() {
         </CardHeader>
         <CardContent className="grid gap-4 pt-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {data.pipeline.map((phase) => (
-            <Link key={phase.key} to={shipmentHref({ phase: phase.key, stage: phase.stages.join(",") })} className="block rounded-lg p-2 -m-2 outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring">
+            <Link key={phase.key} to={scopedHref(shipmentHref({ phase: phase.key, stage: phase.stages.join(",") }), false)} className="block rounded-lg p-2 -m-2 outline-none transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring">
             <div className="space-y-2">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-sm font-medium">{phase.label}</span>

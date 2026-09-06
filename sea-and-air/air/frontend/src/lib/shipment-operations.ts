@@ -1,3 +1,5 @@
+import { parseApiDate } from "./format.ts"
+
 export interface ShipmentOperationState {
   stage: string
   is_at_risk: boolean
@@ -23,10 +25,14 @@ export interface JourneyRailItem {
   state: "completed" | "current" | "upcoming"
 }
 
+export function needsAttention(shipment: Pick<ShipmentOperationState, "is_at_risk" | "is_on_hold" | "priority">): boolean {
+  return shipment.is_at_risk || shipment.is_on_hold || shipment.priority === "high"
+}
+
 export function quickViewCounts(shipments: ShipmentOperationState[]) {
   return {
     all: shipments.length,
-    attention: shipments.filter((shipment) => shipment.is_at_risk || shipment.is_on_hold).length,
+    attention: shipments.filter(needsAttention).length,
     atRisk: shipments.filter((shipment) => shipment.is_at_risk).length,
     onHold: shipments.filter((shipment) => shipment.is_on_hold).length,
     highPriority: shipments.filter((shipment) => shipment.priority === "high").length,
@@ -41,7 +47,9 @@ export function stageEnteredAt(stage: string, events: StageEntry[]): string | nu
 
 export function formatWaitingAge(enteredAt: string | null, now = new Date()): string {
   if (!enteredAt) return "—"
-  const minutes = Math.max(0, Math.floor((now.getTime() - new Date(enteredAt).getTime()) / 60_000))
+  const timestamp = parseApiDate(enteredAt).getTime()
+  if (!Number.isFinite(timestamp)) return "—"
+  const minutes = Math.max(0, Math.floor((now.getTime() - timestamp) / 60_000))
   if (minutes < 1) return "Just now"
   const days = Math.floor(minutes / 1_440)
   const hours = Math.floor((minutes % 1_440) / 60)
@@ -70,11 +78,8 @@ export function journeyRail(stages: JourneyStage[], currentStage: string): Journ
   }))
 }
 
-export function attentionText(shipment: Pick<ShipmentOperationState, "is_at_risk" | "is_on_hold">): string | null {
-  if (shipment.is_on_hold && shipment.is_at_risk) return "On hold · At risk"
-  if (shipment.is_on_hold) return "On hold"
-  if (shipment.is_at_risk) return "At risk"
-  return null
+export function attentionText(shipment: Pick<ShipmentOperationState, "is_at_risk" | "is_on_hold"> & { priority?: string }): string | null {
+  return [shipment.is_on_hold && "On hold", shipment.is_at_risk && "At risk", shipment.priority === "high" && "High priority"].filter(Boolean).join(" · ") || null
 }
 
 export function withShipmentSearch(params: URLSearchParams, search: string): URLSearchParams {

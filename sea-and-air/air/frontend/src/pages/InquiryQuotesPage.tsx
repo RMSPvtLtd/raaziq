@@ -1,10 +1,9 @@
 import { useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
-import { ArrowLeft, CaretRight, Plus, Scales, Trash } from "@phosphor-icons/react"
+import { ArrowLeft, Plus, Scales, Trash } from "@phosphor-icons/react"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { LoadingState, ErrorState, EmptyState } from "@/components/shared/States"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,7 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { useAsync } from "@/hooks/useAsync"
 import { ApiError, inquiriesApi, quotesApi } from "@/lib/api/client"
 import { formatDate, formatMoney } from "@/lib/format"
-import { manualSubtotal, prepareQuoteComparison } from "@/lib/quote-comparison"
+import { comparisonMatrix, manualSubtotal, prepareQuoteComparison } from "@/lib/quote-comparison"
 import type { ChargeKind, ManualLineItemInput, Quote } from "@/lib/api/types"
 
 const CHARGE_KINDS: ChargeKind[] = ["freight", "documentation", "customs", "pickup", "handling", "other"]
@@ -35,25 +34,28 @@ export function InquiryQuotesPage() {
   return <div className="mx-auto max-w-6xl">
     <Button variant="ghost" size="sm" className="mb-3 -ml-2 gap-1.5 text-muted-foreground" onClick={() => navigate("/quotes")}><ArrowLeft size={16} /> Quote library</Button>
     <PageHeader title="Compare quotes" description={`${inq.origin} → ${inq.destination} · ${inq.mode.toUpperCase()} · ${inq.cargo_type} · Incoterm ${inq.incoterm}`} action={<ManualQuoteDialog inquiryId={inquiryId} onCreated={offers.reload} />} />
-    {quotes.length === 0 ? <EmptyState icon={<Scales size={32} />} title="No quotes yet" description="No rate card matched this lane automatically. Add a manual quote to price it by hand." /> : <><QuoteComparison quotes={quotes} lowestQuoteId={lowestQuoteId} /><PriceBreakdown quotes={quotes} lowestQuoteId={lowestQuoteId} /></>}
+    {quotes.length === 0 ? <EmptyState icon={<Scales size={32} />} title="No quotes yet" description="No rate card matched this lane automatically. Add a manual quote to price it by hand." /> : <PriceBreakdown quotes={quotes} lowestQuoteId={lowestQuoteId} />}
   </div>
 }
 
-function QuoteComparison({ quotes, lowestQuoteId }: { quotes: Quote[]; lowestQuoteId: number | null }) {
-  return <>
-    <div className="hidden overflow-x-auto rounded-xl border border-border md:block">
-      <table className="w-full min-w-[760px] text-sm"><thead className="bg-muted/40"><tr><th className="h-10 px-3 text-left font-medium">Carrier</th><th className="px-3 text-left font-medium">Quote</th><th className="px-3 text-left font-medium">Source</th><th className="px-3 text-left font-medium">Line items</th><th className="px-3 text-left font-medium">Valid until</th><th className="px-3 text-right font-medium">Total</th><th className="px-3 text-right font-medium">Actions</th></tr></thead>
-        <tbody>{quotes.map((quote) => <tr key={quote.id} className="border-t border-border hover:bg-muted/40"><td className="p-3 font-medium">{quote.carrier ?? "Unspecified carrier"}{quote.id === lowestQuoteId && <Badge className="ml-2 bg-status-success-bg text-status-success">Lowest price</Badge>}</td><td className="p-3 tabular-nums">Q-{quote.root_quote_id ?? quote.id} · Rev {quote.revision_number}</td><td className="p-3">{quote.is_manual ? "Manual" : "Rate card"}</td><td className="p-3 text-muted-foreground">{quote.line_items.length} item{quote.line_items.length === 1 ? "" : "s"}</td><td className="p-3 whitespace-nowrap">{formatDate(quote.valid_until)}</td><td className="p-3 text-right font-heading text-base font-semibold tabular-nums">{formatMoney(quote.total, quote.currency)}</td><td className="p-3 text-right"><Button asChild variant="ghost" size="sm"><Link to={`/quotes/${quote.id}`}>Open <CaretRight size={14} /></Link></Button></td></tr>)}</tbody>
+function PriceBreakdown({ quotes, lowestQuoteId }: { quotes: Quote[]; lowestQuoteId: number | null }) {
+  const rows = comparisonMatrix(quotes)
+  return <section className="mt-7" aria-labelledby="price-breakdown-heading">
+    <div className="mb-3"><h2 id="price-breakdown-heading" className="font-heading text-lg font-semibold">Aligned price breakdown</h2><p className="text-sm text-muted-foreground">The same charge categories line up across every current carrier offer.</p></div>
+    <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <table className="w-full min-w-max text-sm">
+        <thead className="bg-muted/50"><tr><th className="sticky left-0 z-10 bg-muted px-4 py-3 text-left font-medium">Charge</th>{quotes.map((quote) => <th key={quote.id} className="min-w-56 px-5 py-5 text-right font-medium"><span className="block">{quote.carrier ?? "Unspecified carrier"}</span><span className="text-xs font-normal text-muted-foreground">{quote.currency}{quote.id === lowestQuoteId ? " · Lowest price" : ""}</span><span className="mt-2 block text-xs font-normal text-muted-foreground">Q-{quote.root_quote_id ?? quote.id} · Rev {quote.revision_number} · {quote.is_manual ? "Manual" : "Rate card"}</span><span className="block text-xs font-normal text-muted-foreground">Valid until {formatDate(quote.valid_until)}</span></th>)}</tr></thead>
+        <tbody>
+          {rows.map((row) => <tr key={row.kind} className="border-t border-border"><th className="sticky left-0 bg-card px-4 py-3 text-left font-medium">{row.label}</th>{quotes.map((quote) => <td key={quote.id} className="px-4 py-3 text-right tabular-nums">{row.amounts[quote.id] === null ? "—" : formatMoney(String(row.amounts[quote.id]), quote.currency)}</td>)}</tr>)}
+          <tr className="border-t border-border bg-muted/20"><th className="sticky left-0 bg-muted px-4 py-3 text-left font-medium">Subtotal</th>{quotes.map((quote) => <td key={quote.id} className="px-4 py-3 text-right tabular-nums">{formatMoney(quote.subtotal, quote.currency)}</td>)}</tr>
+          <tr className="border-t border-border"><th className="sticky left-0 bg-card px-4 py-3 text-left font-medium">Markup</th>{quotes.map((quote) => <td key={quote.id} className="px-4 py-3 text-right tabular-nums">{formatMoney(quote.markup_amount, quote.currency)}</td>)}</tr>
+          <tr className="border-t border-border"><th className="sticky left-0 bg-card px-4 py-3 text-left font-medium">Tax</th>{quotes.map((quote) => <td key={quote.id} className="px-4 py-3 text-right tabular-nums">{formatMoney(quote.tax_amount, quote.currency)}</td>)}</tr>
+          <tr className="border-t border-border"><th className="sticky left-0 bg-card px-4 py-3 text-left font-medium">Discount</th>{quotes.map((quote) => <td key={quote.id} className="px-4 py-3 text-right tabular-nums">−{formatMoney(quote.discount_amount, quote.currency)}</td>)}</tr>
+          <tr className="border-t-2 border-border bg-muted/40"><th className="sticky left-0 bg-muted px-4 py-4 text-left font-semibold">Total</th>{quotes.map((quote) => <td key={quote.id} className="px-4 py-4 text-right font-heading text-base font-semibold tabular-nums">{formatMoney(quote.total, quote.currency)}</td>)}</tr>
+        </tbody>
+        <tfoot><tr className="border-t"><th className="sticky left-0 bg-card p-4 text-left font-medium">Review offer</th>{quotes.map((quote) => <td key={quote.id} className="p-4 text-right"><Button asChild variant={quote.id === lowestQuoteId ? "default" : "outline"}><Link to={`/quotes/${quote.id}`} aria-label={`Review ${quote.carrier ?? "carrier"} quote for ${formatMoney(quote.total, quote.currency)}`}>Open quote</Link></Button></td>)}</tr></tfoot>
       </table>
     </div>
-    <ul className="space-y-2 md:hidden" aria-label="Quote comparison">{quotes.map((quote) => <li key={quote.id} className="rounded-xl border border-border p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-medium">{quote.carrier ?? "Unspecified carrier"}</p><p className="text-xs text-muted-foreground">Q-{quote.root_quote_id ?? quote.id} · Rev {quote.revision_number} · {quote.is_manual ? "Manual" : "Rate card"}</p></div>{quote.id === lowestQuoteId && <Badge className="bg-status-success-bg text-status-success">Lowest price</Badge>}</div><div className="mt-4 flex items-end justify-between gap-3"><div className="text-xs text-muted-foreground"><p>{quote.line_items.length} line item{quote.line_items.length === 1 ? "" : "s"}</p><p>Valid until {formatDate(quote.valid_until)}</p></div><div className="text-right"><p className="font-heading text-lg font-semibold tabular-nums">{formatMoney(quote.total, quote.currency)}</p><Button asChild variant="link" size="sm" className="h-auto p-0"><Link to={`/quotes/${quote.id}`}>Open quote</Link></Button></div></div></li>)}</ul>
-  </>
-}
-
-function PriceBreakdown({ quotes, lowestQuoteId }: { quotes: Quote[]; lowestQuoteId: number | null }) {
-  return <section className="mt-7" aria-labelledby="price-breakdown-heading">
-    <div className="mb-3"><h2 id="price-breakdown-heading" className="font-heading text-lg font-semibold">Price breakdown</h2><p className="text-sm text-muted-foreground">Actual customer-facing line totals from each current offer.</p></div>
-    <div className="grid gap-3 md:grid-flow-col md:auto-cols-[minmax(250px,1fr)] md:overflow-x-auto md:pb-2">{quotes.map((quote) => <article key={quote.id} className="rounded-xl border border-border bg-card p-4"><div className="mb-4 flex items-start justify-between gap-2"><div><h3 className="font-medium">{quote.carrier ?? "Unspecified carrier"}</h3><p className="text-xs text-muted-foreground">{quote.currency} · {quote.is_manual ? "Manual" : "Rate card"}</p></div>{quote.id === lowestQuoteId && <Badge variant="outline">Lowest price</Badge>}</div><dl className="space-y-2">{quote.line_items.map((item) => <div key={item.id} className="flex items-start justify-between gap-3 border-b border-border pb-2 text-sm"><dt><span className="block font-medium">{item.description}</span><span className="capitalize text-xs text-muted-foreground">{item.kind}</span></dt><dd className="shrink-0 tabular-nums">{formatMoney(item.final_total, quote.currency)}</dd></div>)}<div className="flex justify-between gap-3 pt-1 text-sm"><dt className="text-muted-foreground">Subtotal</dt><dd className="tabular-nums">{formatMoney(quote.subtotal, quote.currency)}</dd></div><div className="flex justify-between gap-3 text-sm"><dt className="text-muted-foreground">Markup</dt><dd className="tabular-nums">{formatMoney(quote.markup_amount, quote.currency)}</dd></div>{Number(quote.tax_amount) !== 0 && <div className="flex justify-between gap-3 text-sm"><dt className="text-muted-foreground">Tax</dt><dd className="tabular-nums">{formatMoney(quote.tax_amount, quote.currency)}</dd></div>}{Number(quote.discount_amount) !== 0 && <div className="flex justify-between gap-3 text-sm"><dt className="text-muted-foreground">Discount</dt><dd className="tabular-nums">−{formatMoney(quote.discount_amount, quote.currency)}</dd></div>}<div className="flex justify-between gap-3 border-t border-border pt-3 font-heading font-semibold"><dt>Total</dt><dd className="tabular-nums">{formatMoney(quote.total, quote.currency)}</dd></div></dl></article>)}</div>
   </section>
 }
 

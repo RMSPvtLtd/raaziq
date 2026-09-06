@@ -7,6 +7,27 @@ type ComparableQuote = {
 
 type QuoteStatus = "draft" | "sent" | "accepted" | "expired" | "rejected"
 
+const CHARGE_LABELS = {
+  freight: "Freight",
+  documentation: "Documentation",
+  customs: "Customs",
+  pickup: "Pickup",
+  handling: "Handling",
+  other: "Other",
+} as const
+
+type MatrixQuote = { id: number; line_items: { kind: string; final_total: string }[] }
+
+export function comparisonMatrix(quotes: MatrixQuote[]) {
+  return Object.entries(CHARGE_LABELS).flatMap(([kind, label]) => {
+    const amounts = Object.fromEntries(quotes.map((quote) => {
+      const matching = quote.line_items.filter((item) => item.kind === kind)
+      return [quote.id, matching.length ? matching.reduce((sum, item) => sum + (Number(item.final_total) || 0), 0) : null]
+    })) as Record<number, number | null>
+    return Object.values(amounts).some((value) => value !== null) ? [{ kind, label, amounts }] : []
+  })
+}
+
 export function prepareQuoteComparison<T extends ComparableQuote>(offers: T[]) {
   const quotes = offers
     .filter((quote) => quote.is_current)

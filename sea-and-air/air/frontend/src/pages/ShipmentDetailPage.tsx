@@ -9,7 +9,7 @@ import { PriorityBadge } from "@/components/shared/PriorityBadge"
 import { DocumentsCard } from "@/components/shared/DocumentsCard"
 import { EventTimeline } from "@/components/shared/EventTimeline"
 import { JourneyRail } from "@/components/shared/JourneyRail"
-import { RouteOverview } from "@/components/shared/RouteOverview"
+import { RouteMap } from "@/components/shared/RouteMap"
 import { LoadingState, ErrorState } from "@/components/shared/States"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -93,32 +93,35 @@ export function ShipmentDetailPage() {
         }
       />
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid overflow-hidden rounded-xl border border-border bg-card xl:grid-cols-[minmax(0,1fr)_320px]">
+        {inquiry.data ? <RouteMap origin={inquiry.data.origin} destination={inquiry.data.destination} mode={inquiry.data.mode} className="rounded-none border-0 [&>div:first-child]:min-h-80 [&>div:first-child>div]:min-h-80 xl:[&>div:first-child]:min-h-96 xl:[&>div:first-child>div]:min-h-96" /> : <div className="grid min-h-80 place-items-center text-sm text-muted-foreground">Loading route overview…</div>}
+        <aside className="divide-y divide-border border-t border-border xl:border-t-0 xl:border-l [&>[data-slot=card]]:rounded-none [&>[data-slot=card]]:border-0 [&>[data-slot=card]]:shadow-none">
         <CurrentSituationCard shipment={s} stageLabel={currentStage?.label ?? s.stage} areaName={currentArea} />
-        {inquiry.data ? <RouteOverview origin={inquiry.data.origin} destination={inquiry.data.destination} mode={inquiry.data.mode} /> : <Card><CardContent className="py-6 text-sm text-muted-foreground">Loading route overview…</CardContent></Card>}
         {s.is_cancelled ? <CancelledCard shipment={s} /> : <NextStageCard shipmentId={s.id} quoteId={s.quote_id} nextStage={nextStage} areas={areas.data ?? []} onDone={shipment.reload} />}
+        </aside>
       </div>
 
-      <Card className="mt-4 overflow-hidden">
-        <CardHeader className="pb-3"><CardTitle className="text-base">Journey</CardTitle></CardHeader>
-        <CardContent className="overflow-x-auto"><JourneyRail stages={stages} currentStage={s.stage} /></CardContent>
-      </Card>
+      <section className="mt-6 border-b border-border pb-6">
+        <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Shipment journey</h2>
+        <JourneyRail stages={stages} currentStage={s.stage} />
+      </section>
 
       <Tabs defaultValue="overview" className="mt-6">
-        <TabsList variant="line" className="w-full justify-start overflow-x-auto"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="activity">Activity</TabsTrigger><TabsTrigger value="documents">Documents</TabsTrigger></TabsList>
+        <TabsList variant="line" className="w-full justify-start overflow-x-auto"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="activity">Activity</TabsTrigger><TabsTrigger value="documents">Documents</TabsTrigger><TabsTrigger value="references">References</TabsTrigger><TabsTrigger value="commercial">Commercial</TabsTrigger></TabsList>
         <TabsContent value="overview" className="mt-5 space-y-6">
-          <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-0 divide-y divide-border overflow-hidden rounded-xl border border-border bg-card lg:grid-cols-2 xl:grid-cols-3 [&>[data-slot=card]]:rounded-none [&>[data-slot=card]]:border-0 [&>[data-slot=card]]:shadow-none">
             <HoldCard shipmentId={s.id} isOnHold={s.is_on_hold} holdReason={s.hold_reason} onDone={shipment.reload} />
             <PriorityCard shipmentId={s.id} priority={s.priority} onDone={shipment.reload} />
             <RiskCard shipmentId={s.id} isAtRisk={s.is_at_risk} riskReason={s.risk_reason} onDone={shipment.reload} />
             <RoutingCard shipmentId={s.id} carrier={s.carrier} voyageFlightNumber={s.voyage_flight_number} onDone={shipment.reload} />
-            <ReferencesCard shipmentId={s.id} references={s.references} onDone={shipment.reload} />
             <Card><CardHeader><CardTitle className="text-base">Shipment info</CardTitle></CardHeader><CardContent className="space-y-2 text-sm"><InfoRow label="Inquiry received" value={formatDate(s.created_at)} /><InfoRow label="Last updated" value={formatDate(s.updated_at)} />{inquiry.data && <InfoRow label="Cargo" value={inquiry.data.cargo_type} />}{inquiry.data && <InfoRow label="Incoterm" value={inquiry.data.incoterm} />}{inquiry.data?.hs_code && <InfoRow label="HS Code" value={inquiry.data.hs_code} />}{inquiry.data?.pieces && <InfoRow label="Pieces" value={String(inquiry.data.pieces)} />}{inquiry.data?.supplier_name && <InfoRow label="Supplier" value={inquiry.data.supplier_name} />}</CardContent></Card>
           </div>
-          <Card className="border-destructive/30"><CardHeader><CardTitle className="text-base text-destructive">Danger zone</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2">{!s.is_cancelled && <CancelShipmentCard shipmentId={s.id} onDone={shipment.reload} />}<DeleteShipmentCard shipmentId={s.id} label={s.job_number ?? `Inquiry #${s.inquiry_id}`} /></CardContent></Card>
+          <details className="border-t border-border pt-4"><summary className="cursor-pointer text-sm text-muted-foreground">Shipment administration</summary><div className="mt-4 grid max-w-xl gap-3 sm:grid-cols-2">{!s.is_cancelled && <CancelShipmentCard shipmentId={s.id} onDone={shipment.reload} />}<DeleteShipmentCard shipmentId={s.id} label={s.job_number ?? `Inquiry #${s.inquiry_id}`} /></div></details>
         </TabsContent>
         <TabsContent value="activity" className="mt-5 space-y-4"><Card><CardHeader><CardTitle className="text-base">Exact stage history</CardTitle></CardHeader><CardContent><EventTimeline entries={s.status_events} /></CardContent></Card>{!s.is_cancelled && <CorrectionCard shipmentId={s.id} currentStage={s.stage} onDone={shipment.reload} />}</TabsContent>
         <TabsContent value="documents" className="mt-5"><DocumentsCard shipmentId={s.id} /></TabsContent>
+        <TabsContent value="references" className="mt-5 max-w-2xl"><ReferencesCard shipmentId={s.id} references={s.references} onDone={shipment.reload} /></TabsContent>
+        <TabsContent value="commercial" className="mt-5"><section className="max-w-2xl border-l-2 border-primary pl-5"><h2 className="font-heading text-lg font-semibold">Commercial record</h2><p className="mt-2 text-sm text-muted-foreground">Review the quotation associated with this shipment for agreed charges, terms and invoice details.</p>{s.quote_id ? <Button asChild variant="outline" className="mt-4"><Link to={`/quotes/${s.quote_id}`}>View quotation</Link></Button> : <p className="mt-4 text-sm text-muted-foreground">No quotation is linked to this shipment.</p>}</section></TabsContent>
       </Tabs>
     </div>
   )

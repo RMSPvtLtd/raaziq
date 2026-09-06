@@ -14,14 +14,21 @@ export function formatNumber(value: string, options?: Intl.NumberFormatOptions):
   return new Intl.NumberFormat("en-US", options).format(n)
 }
 
+export function parseApiDate(value: string): Date {
+  // SQLite drops the UTC offset from API datetimes; calendar dates have no timezone.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(`${value}T00:00:00`)
+  const isNaiveDatetime = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(value)
+  return new Date(isNaiveDatetime ? `${value.replace(" ", "T")}Z` : value)
+}
+
 export function formatDate(value: string): string {
-  const d = new Date(value)
+  const d = parseApiDate(value)
   if (Number.isNaN(d.getTime())) return value
   return new Intl.DateTimeFormat("en-US", { day: "2-digit", month: "short", year: "numeric" }).format(d)
 }
 
 export function formatDateTime(value: string): string {
-  const d = new Date(value)
+  const d = parseApiDate(value)
   if (Number.isNaN(d.getTime())) return value
   return new Intl.DateTimeFormat("en-US", {
     day: "2-digit",
@@ -33,7 +40,7 @@ export function formatDateTime(value: string): string {
 }
 
 export function formatRelativeTime(value: string): string {
-  const d = new Date(value)
+  const d = parseApiDate(value)
   if (Number.isNaN(d.getTime())) return value
   const diffMs = d.getTime() - Date.now()
   const diffMinutes = Math.round(diffMs / 60000)

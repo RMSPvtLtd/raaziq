@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { CalendarBlank, MagnifyingGlass, Plus, Trash } from "@phosphor-icons/react"
+import { CalendarBlank, DotsThree, MagnifyingGlass, Plus, Trash } from "@phosphor-icons/react"
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { LoadingState, ErrorState, EmptyState } from "@/components/shared/States"
 import { Card, CardContent } from "@/components/ui/card"
@@ -21,6 +23,7 @@ import {
 import { useAsync } from "@/hooks/useAsync"
 import { airlineSchedulesApi, ApiError } from "@/lib/api/client"
 import { cn } from "@/lib/utils"
+import { filterSchedules } from "@/lib/schedule-filters"
 import type { AirlineSchedule, AirlineScheduleInput, DayOfWeek, TransportMode } from "@/lib/api/types"
 
 const MODES: TransportMode[] = ["air", "sea", "road"]
@@ -53,14 +56,11 @@ export function AirlineSchedulesAdminPage() {
   const schedules = useAsync(() => airlineSchedulesApi.list(), [])
   const [search, setSearch] = useState("")
   const [day, setDay] = useState<DayOfWeek | "all">("all")
-  const visible = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase()
-    return (schedules.data ?? []).filter((schedule) =>
-      (day === "all" || schedule.days_of_week.includes(day)) &&
-      (!term || [schedule.airline_name, schedule.origin, schedule.destination, schedule.mode]
-        .some((value) => value.toLocaleLowerCase().includes(term)))
-    )
-  }, [day, schedules.data, search])
+  const [lane, setLane] = useState("all")
+  const [carrier, setCarrier] = useState("all")
+  const lanes = [...new Set((schedules.data ?? []).map((s) => `${s.origin} → ${s.destination}`))].sort()
+  const carriers = [...new Set((schedules.data ?? []).map((s) => s.airline_name))].sort()
+  const visible = useMemo(() => filterSchedules(schedules.data ?? [], { search, day, lane, carrier }), [day, lane, carrier, schedules.data, search])
 
   return (
     <div>
@@ -82,12 +82,14 @@ export function AirlineSchedulesAdminPage() {
 
       {!schedules.loading && !schedules.error && (schedules.data?.length ?? 0) > 0 && <>
         <div className="mb-3 flex items-center gap-2"><Badge variant="outline">Reference only</Badge><p className="text-xs text-muted-foreground">Confirm live capacity with the airline.</p></div>
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Select value={lane} onValueChange={setLane}><SelectTrigger className="w-full sm:w-52" aria-label="Filter schedule lane"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All lanes</SelectItem>{lanes.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
+          <Select value={carrier} onValueChange={setCarrier}><SelectTrigger className="w-full sm:w-44" aria-label="Filter schedule carrier"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All carriers</SelectItem>{carriers.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
           <div className="relative min-w-0 flex-1"><MagnifyingGlass size={17} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search airline schedules" placeholder="Search airline, route, or mode…" className="pl-9" /></div>
           <Select value={day} onValueChange={(value) => setDay(value as DayOfWeek | "all")}><SelectTrigger className="w-full sm:w-44" aria-label="Filter schedules by day"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All days</SelectItem>{DAYS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select>
           <p className="self-center text-sm text-muted-foreground"><span className="font-medium tabular-nums text-foreground">{visible.length}</span> result{visible.length === 1 ? "" : "s"}</p>
         </div>
-        {visible.length === 0 ? <EmptyState icon={<CalendarBlank size={32} />} title="No schedules match this view" description="Try another airline, route, or day." action={<Button variant="outline" onClick={() => { setSearch(""); setDay("all") }}>Clear filters</Button>} /> : <ScheduleRecords schedules={visible} onChanged={schedules.reload} />}
+        {visible.length === 0 ? <EmptyState icon={<CalendarBlank size={32} />} title="No schedules match this view" description="Try another airline, route, or day." action={<Button variant="outline" onClick={() => { setSearch(""); setDay("all"); setLane("all"); setCarrier("all") }}>Clear filters</Button>} /> : <ScheduleRecords schedules={visible} onChanged={schedules.reload} />}
       </>}
     </div>
   )
@@ -107,13 +109,14 @@ function ScheduleRecords({ schedules, onChanged }: { schedules: AirlineSchedule[
 
 function ScheduleActions({ schedule, onChanged }: { schedule: AirlineSchedule; onChanged: () => void }) {
   const [deleting, setDeleting] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   async function handleDelete() {
-    if (!confirm(`Delete ${schedule.airline_name}'s ${schedule.origin} → ${schedule.destination} schedule?`)) return
     setDeleting(true)
     try {
       await airlineSchedulesApi.remove(schedule.id)
       toast.success("Schedule deleted")
+      setConfirmOpen(false)
       onChanged()
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not delete schedule.")
@@ -122,7 +125,7 @@ function ScheduleActions({ schedule, onChanged }: { schedule: AirlineSchedule; o
     }
   }
 
-  return <div className="flex items-center justify-end gap-2"><ScheduleFormDialog schedule={schedule} onSaved={onChanged} /><Button variant="outline" size="icon-sm" aria-label={`Delete ${schedule.airline_name} schedule`} disabled={deleting} onClick={handleDelete}><Trash size={14} /></Button></div>
+  return <div className="flex items-center justify-end gap-2"><ScheduleFormDialog schedule={schedule} onSaved={onChanged} /><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`More actions for ${schedule.airline_name}`}><DotsThree size={20} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem variant="destructive" onSelect={() => setConfirmOpen(true)}><Trash size={14} /> Delete schedule</DropdownMenuItem></DropdownMenuContent></DropdownMenu><ConfirmDialog open={confirmOpen} onOpenChange={setConfirmOpen} title="Delete schedule?" description={`${schedule.airline_name} · ${schedule.origin} → ${schedule.destination}. This removes the weekly planning reference.`} pending={deleting} onConfirm={handleDelete} /></div>
 }
 
 function ScheduleRow({ schedule, onChanged }: { schedule: AirlineSchedule; onChanged: () => void }) {
@@ -293,7 +296,7 @@ function ScheduleFormDialog({ schedule, onSaved }: { schedule?: AirlineSchedule;
                     aria-pressed={active}
                     onClick={() => toggleDay(d.value)}
                     className={cn(
-                      "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                      "min-h-11 min-w-11 rounded-md border px-2.5 py-1 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
                       active
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-border bg-transparent text-muted-foreground hover:bg-muted"

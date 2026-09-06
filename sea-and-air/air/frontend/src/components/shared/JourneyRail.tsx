@@ -9,10 +9,10 @@ export function JourneyRail({ stages, currentStage }: { stages: StageMeta[]; cur
   if (!items.length) return null
 
   return (
-    <ol className="flex min-w-max items-start gap-0" aria-label="Condensed shipment journey">
-      {items.map((item, index) => (
-        <li key={item.label} className="flex items-start">
-          <div className="flex w-20 flex-col items-center text-center sm:w-24">
+    <ol className="grid w-full grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4 lg:flex" aria-label="Condensed shipment journey">
+      {items.map((item) => (
+        <li key={item.label} className={cn("min-w-0 flex-1 border-t-2 px-1 pt-3 text-center", item.state === "current" ? "border-status-info" : item.state === "completed" ? "border-status-success/50" : "border-border")}>
+          <div className="flex min-w-0 flex-col items-center text-center">
             <span
               className={cn(
                 "flex size-6 items-center justify-center rounded-full border text-xs",
@@ -27,7 +27,6 @@ export function JourneyRail({ stages, currentStage }: { stages: StageMeta[]; cur
             <span className={cn("mt-1 text-xs font-medium", item.state === "upcoming" && "text-muted-foreground")}>{item.label}</span>
             {item.state === "current" && <span className="mt-0.5 text-[11px] text-status-info">Current</span>}
           </div>
-          {index < items.length - 1 && <span className={cn("mt-3 h-0.5 w-6 sm:w-10", item.state === "completed" ? "bg-status-success" : "bg-border")} aria-hidden="true" />}
         </li>
       ))}
     </ol>

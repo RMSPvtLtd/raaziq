@@ -1,4 +1,6 @@
 import type { Customer, Inquiry, Shipment, ShipmentStage, StageMeta, TransportMode } from "./api/types"
+import { needsAttention } from "./shipment-operations.ts"
+import { parseApiDate } from "./format.ts"
 
 export interface OverviewMetrics {
   active: number
@@ -42,9 +44,9 @@ export interface OverviewData {
 function minutesWaiting(shipment: Shipment, now: Date): number {
   const stageChanges = shipment.status_events
     .filter((event) => event.is_stage_change && event.stage === shipment.stage)
-    .map((event) => new Date(event.timestamp).getTime())
+    .map((event) => parseApiDate(event.timestamp).getTime())
     .filter((timestamp) => Number.isFinite(timestamp))
-  const latestStageChange = stageChanges.length ? Math.max(...stageChanges) : new Date(shipment.updated_at).getTime()
+  const latestStageChange = stageChanges.length ? Math.max(...stageChanges) : parseApiDate(shipment.updated_at).getTime()
   if (!Number.isFinite(latestStageChange)) return 0
   return Math.max(0, Math.floor((now.getTime() - latestStageChange) / 60000))
 }
@@ -88,7 +90,7 @@ export function deriveOverviewData(
   }
 
   const attention = activeShipments
-    .filter((shipment) => shipment.is_at_risk || shipment.is_on_hold || shipment.priority === "high")
+    .filter(needsAttention)
     .map((shipment) => ({
       shipment,
       customer: customerById.get(shipment.customer_id),

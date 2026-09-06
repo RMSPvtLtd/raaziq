@@ -16,7 +16,7 @@ import { useStages } from "@/hooks/useStages"
 import { ApiError, customersApi, inquiriesApi, shipmentsApi } from "@/lib/api/client"
 import { attentionText, formatWaitingAge, quickViewCounts, stageEnteredAt, withShipmentSearch } from "@/lib/shipment-operations"
 import { filterShipments, parseShipmentQuery } from "@/lib/shipment-filters"
-import type { Priority, Shipment } from "@/lib/api/types"
+import type { Shipment } from "@/lib/api/types"
 
 type QuickView = "all" | "attention" | "atRisk" | "onHold" | "highPriority" | "readyToInvoice" | "completed"
 
@@ -26,16 +26,6 @@ const QUICK_VIEWS: { id: QuickView; label: string }[] = [
   { id: "readyToInvoice", label: "Ready to invoice" }, { id: "completed", label: "Completed" },
 ]
 
-function matchesQuickView(view: QuickView, shipment: { stage: string; is_at_risk: boolean; is_on_hold: boolean; is_cancelled: boolean; priority: string }) {
-  if (view === "attention") return shipment.is_at_risk || shipment.is_on_hold
-  if (view === "atRisk") return shipment.is_at_risk
-  if (view === "onHold") return shipment.is_on_hold
-  if (view === "highPriority") return shipment.priority === "high"
-  if (view === "readyToInvoice") return shipment.stage === "arrival" && !shipment.is_on_hold && !shipment.is_cancelled
-  if (view === "completed") return shipment.stage === "invoice_to_customer"
-  return true
-}
-
 export function ShipmentListPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -44,11 +34,11 @@ export function ShipmentListPage() {
   const query = useMemo(() => parseShipmentQuery(new URLSearchParams(queryString)), [queryString])
   const urlSearch = searchParams.get("search") ?? ""
   const [searchDraft, setSearchDraft] = useState(urlSearch)
-  const [quickView, setQuickView] = useState<QuickView>("all")
-  const [priority, setPriority] = useState<Priority | "all">("all")
-  const [risk, setRisk] = useState<"all" | "true" | "false">("all")
-  const [customerId, setCustomerId] = useState("all")
-  const [route, setRoute] = useState("all")
+  const quickView = query.view
+  const priority = query.priority ?? "all"
+  const risk = query.atRisk === undefined ? "all" : String(query.atRisk)
+  const customerId = query.customerId ? String(query.customerId) : "all"
+  const route = query.origin && query.destination ? `${query.origin}\u0000${query.destination}` : "all"
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; label: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
   const shipments = useAsync(() => shipmentsApi.list(), [])
@@ -62,17 +52,7 @@ export function ShipmentListPage() {
   )
   const counts = useMemo(() => quickViewCounts(shipments.data ?? []), [shipments.data])
   useEffect(() => setSearchDraft(urlSearch), [urlSearch])
-  const visibleShipments = useMemo(() => {
-    const routeMatch = route === "all" ? null : route.split("\u0000")
-    return filterShipments(shipments.data ?? [], customers.data ?? [], inquiries.data ?? [], query).filter((shipment) => {
-      const inquiry = inquiryById.get(shipment.inquiry_id)
-      return matchesQuickView(quickView, shipment)
-        && (priority === "all" || shipment.priority === priority)
-        && (risk === "all" || shipment.is_at_risk === (risk === "true"))
-        && (customerId === "all" || shipment.customer_id === Number(customerId))
-        && (!routeMatch || (inquiry?.origin === routeMatch[0] && inquiry.destination === routeMatch[1]))
-    })
-  }, [customerId, customers.data, inquiries.data, inquiryById, priority, query, quickView, risk, route, shipments.data])
+  const visibleShipments = useMemo(() => filterShipments(shipments.data ?? [], customers.data ?? [], inquiries.data ?? [], query), [customers.data, inquiries.data, query, shipments.data])
   const loading = shipments.loading || customers.loading || inquiries.loading
   const error = shipments.error ?? customers.error ?? inquiries.error
   const hasFilters = quickView !== "all" || priority !== "all" || risk !== "all" || customerId !== "all" || route !== "all" || queryString !== ""
@@ -85,14 +65,24 @@ export function ShipmentListPage() {
   }
 
   function clearFilters() {
-    setQuickView("all")
-    setPriority("all")
-    setRisk("all")
-    setCustomerId("all")
-    setRoute("all")
     setSearchDraft("")
     setSearchParams({})
   }
+
+  function setRoute(value: string) {
+    const next = new URLSearchParams(queryString)
+    const [origin, destination] = value === "all" ? [] : value.split("\u0000")
+    for (const [key, place] of [["origin", origin], ["destination", destination]]) {
+      if (place) next.set(key, place)
+      else next.delete(key)
+    }
+    setSearchParams(next)
+  }
+
+  const setQuickView = (value: QuickView) => setQuery("view", value === "all" ? undefined : value)
+  const setCustomerId = (value: string) => setQuery("customer_id", value === "all" ? undefined : value)
+  const setPriority = (value: string) => setQuery("priority", value === "all" ? undefined : value)
+  const setRisk = (value: string) => setQuery("at_risk", value === "all" ? undefined : value)
 
   async function handleDelete() {
     if (!deleteTarget) return
@@ -123,12 +113,13 @@ export function ShipmentListPage() {
       <p className="self-center text-sm text-muted-foreground"><span className="font-medium text-foreground tabular-nums">{visibleShipments.length}</span> result{visibleShipments.length === 1 ? "" : "s"}</p>
     </div>
     <div className="mb-5 flex flex-wrap items-center gap-2">
+      {query.activeOnly && <Button variant="secondary" size="sm" onClick={() => setQuery("active_only")} aria-label="Remove active shipments only filter">Active shipments only <X size={14} /></Button>}
       <Select value={query.mode ?? "all"} onValueChange={(value) => setQuery("mode", value === "all" ? undefined : value)}><SelectTrigger className="w-32" aria-label="Filter by mode"><SelectValue placeholder="Mode" /></SelectTrigger><SelectContent><SelectItem value="all">All modes</SelectItem><SelectItem value="air">Air</SelectItem><SelectItem value="sea">Sea</SelectItem><SelectItem value="road">Road</SelectItem></SelectContent></Select>
       <Select value={query.stages.length === 1 ? query.stages[0] : "all"} onValueChange={(value) => setQuery("stage", value === "all" ? undefined : value)}><SelectTrigger className="w-44" aria-label="Filter by stage"><SelectValue placeholder="Stage" /></SelectTrigger><SelectContent><SelectItem value="all">All stages</SelectItem>{stages.map((stage) => <SelectItem key={stage.stage} value={stage.stage}>{stage.label}</SelectItem>)}</SelectContent></Select>
       <Select value={customerId} onValueChange={setCustomerId}><SelectTrigger className="w-44" aria-label="Filter by customer"><SelectValue placeholder="Customer" /></SelectTrigger><SelectContent><SelectItem value="all">All customers</SelectItem>{(customers.data ?? []).map((customer) => <SelectItem key={customer.id} value={String(customer.id)}>{customer.name}</SelectItem>)}</SelectContent></Select>
       <Select value={route} onValueChange={setRoute}><SelectTrigger className="w-44" aria-label="Filter by route"><SelectValue placeholder="Route" /></SelectTrigger><SelectContent><SelectItem value="all">All routes</SelectItem>{routeOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
-      <Select value={priority} onValueChange={(value) => setPriority(value as Priority | "all")}><SelectTrigger className="w-36" aria-label="Filter by priority"><SelectValue placeholder="Priority" /></SelectTrigger><SelectContent><SelectItem value="all">All priorities</SelectItem><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select>
-      <Select value={risk} onValueChange={(value) => setRisk(value as "all" | "true" | "false")}><SelectTrigger className="w-36" aria-label="Filter by risk"><SelectValue placeholder="Risk" /></SelectTrigger><SelectContent><SelectItem value="all">All risk states</SelectItem><SelectItem value="true">At risk</SelectItem><SelectItem value="false">Not at risk</SelectItem></SelectContent></Select>
+      <Select value={priority} onValueChange={setPriority}><SelectTrigger className="w-36" aria-label="Filter by priority"><SelectValue placeholder="Priority" /></SelectTrigger><SelectContent><SelectItem value="all">All priorities</SelectItem><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem></SelectContent></Select>
+      <Select value={risk} onValueChange={setRisk}><SelectTrigger className="w-36" aria-label="Filter by risk"><SelectValue placeholder="Risk" /></SelectTrigger><SelectContent><SelectItem value="all">All risk states</SelectItem><SelectItem value="true">At risk</SelectItem><SelectItem value="false">Not at risk</SelectItem></SelectContent></Select>
       {hasFilters && <Button variant="ghost" size="sm" onClick={clearFilters}>Clear filters</Button>}
     </div>
     {loading && <LoadingState rows={6} />}
@@ -150,7 +141,7 @@ function ShipmentRecords({ shipments, customerById, inquiryById, onDelete }: Shi
     return { customer, inquiry, label, waiting }
   }
   return <>
-    <div className="hidden h-[min(60vh,42rem)] overflow-auto rounded-xl border border-border md:block"><table className="w-full caption-bottom text-sm"><thead className="sticky top-0 z-10 bg-background shadow-[0_1px_0_hsl(var(--border))]"><tr className="border-b"><th className="h-10 px-2 text-left font-medium">Job</th><th className="h-10 px-2 text-left font-medium">Customer</th><th className="h-10 px-2 text-left font-medium">Route</th><th className="h-10 px-2 text-left font-medium">Stage</th><th className="h-10 px-2 text-left font-medium">Waiting</th><th className="h-10 px-2 text-left font-medium">Attention</th><th className="h-10 w-10 px-2"><span className="sr-only">Actions</span></th></tr></thead><tbody>{shipments.map((shipment) => { const { customer, inquiry, label, waiting } = record(shipment); return <tr key={shipment.id} className="border-b transition-colors hover:bg-muted/50"><td className="p-2 font-medium tabular-nums"><Link to={`/shipments/${shipment.id}`} className="rounded hover:underline focus-visible:ring-2 focus-visible:ring-ring">{label}</Link></td><td className="p-2">{customer?.name ?? "—"}</td><td className="p-2 whitespace-nowrap">{inquiry ? `${inquiry.origin} → ${inquiry.destination}` : "—"}</td><td className="p-2"><StageBadge stage={shipment.stage} /></td><td className="p-2 tabular-nums text-muted-foreground">{waiting}</td><td className="p-2">{attentionText(shipment) ? <div className="flex flex-wrap gap-1">{shipment.is_on_hold && <span className="rounded bg-status-warning-bg px-1.5 py-0.5 text-xs font-medium text-status-warning">On hold</span>}{shipment.is_at_risk && <RiskBadge />}</div> : <span className="text-muted-foreground">—</span>}</td><td className="p-2"><ShipmentRowActions shipment={shipment} label={label} onDelete={onDelete} /></td></tr>})}</tbody></table></div>
+    <div className="hidden max-h-[min(60vh,42rem)] overflow-auto rounded-xl border border-border md:block"><table className="w-full caption-bottom text-sm"><thead className="sticky top-0 z-10 bg-background shadow-[0_1px_0_hsl(var(--border))]"><tr className="border-b"><th className="h-10 px-2 text-left font-medium">Job</th><th className="h-10 px-2 text-left font-medium">Customer</th><th className="h-10 px-2 text-left font-medium">Route</th><th className="h-10 px-2 text-left font-medium">Stage</th><th className="h-10 px-2 text-left font-medium">Waiting</th><th className="h-10 px-2 text-left font-medium">Attention</th><th className="h-10 w-10 px-2"><span className="sr-only">Actions</span></th></tr></thead><tbody>{shipments.map((shipment) => { const { customer, inquiry, label, waiting } = record(shipment); return <tr key={shipment.id} className="border-b transition-colors hover:bg-muted/50"><td className="p-2 font-medium tabular-nums"><Link to={`/shipments/${shipment.id}`} className="rounded hover:underline focus-visible:ring-2 focus-visible:ring-ring">{label}</Link></td><td className="p-2">{customer?.name ?? "—"}</td><td className="p-2 whitespace-nowrap">{inquiry ? `${inquiry.origin} → ${inquiry.destination}` : "—"}</td><td className="p-2"><StageBadge stage={shipment.stage} /></td><td className="p-2 tabular-nums text-muted-foreground">{waiting}</td><td className="p-2">{attentionText(shipment) ? <div className="flex flex-wrap gap-1">{shipment.is_on_hold && <span className="rounded bg-status-warning-bg px-1.5 py-0.5 text-xs font-medium text-status-warning">On hold</span>}{shipment.is_at_risk && <RiskBadge />}{shipment.priority === "high" && <span className="rounded bg-secondary px-1.5 py-0.5 text-xs font-medium">High priority</span>}</div> : <span className="text-muted-foreground">—</span>}</td><td className="p-2"><ShipmentRowActions shipment={shipment} label={label} onDelete={onDelete} /></td></tr>})}</tbody></table></div>
     <ul className="space-y-2 md:hidden" aria-label="Shipment records">{shipments.map((shipment) => { const { customer, inquiry, label, waiting } = record(shipment); return <li key={shipment.id} className="rounded-xl border border-border p-3"><div className="flex items-start justify-between gap-3"><div><Link to={`/shipments/${shipment.id}`} className="font-medium tabular-nums hover:underline focus-visible:ring-2 focus-visible:ring-ring">{label}</Link><p className="mt-0.5 text-sm text-muted-foreground">{customer?.name ?? "—"}</p></div><div className="flex items-center gap-1"><StageBadge stage={shipment.stage} /><ShipmentRowActions shipment={shipment} label={label} onDelete={onDelete} /></div></div><p className="mt-3 text-sm">{inquiry ? `${inquiry.origin} → ${inquiry.destination}` : "Route unavailable"}</p><div className="mt-3 flex items-center justify-between text-xs text-muted-foreground"><span>Waiting {waiting}</span><span>{attentionText(shipment) ?? "No attention flags"}</span></div></li>})}</ul>
   </>
 }

@@ -4,10 +4,9 @@ import { PageHeader } from "@/components/shared/PageHeader"
 import { StageChecklist } from "@/components/shared/StageChecklist"
 import { EventTimeline } from "@/components/shared/EventTimeline"
 import { JourneyRail } from "@/components/shared/JourneyRail"
-import { RouteOverview } from "@/components/shared/RouteOverview"
+import { RouteMap } from "@/components/shared/RouteMap"
 import { LoadingState, ErrorState } from "@/components/shared/States"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
 import { useAsync } from "@/hooks/useAsync"
 import { useCustomerAuth } from "@/hooks/useCustomerAuth"
 import { useStages } from "@/hooks/useStages"
@@ -35,7 +34,7 @@ export function CustomerShipmentDetailPage() {
   const journey = customerJourneyState(r.checklist, r.is_cancelled)
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-7">
       <PageHeader
         title={
           <span className="flex flex-wrap items-center gap-2">
@@ -63,42 +62,40 @@ export function CustomerShipmentDetailPage() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card><CardContent className="py-5"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current situation</p><p className="mt-2 font-heading text-xl font-semibold">{r.is_cancelled ? "Cancelled" : labelFor(r.stage)}</p><p className="mt-1 text-sm text-muted-foreground">{latest ? `Updated ${formatRelativeTime(latest.timestamp)}` : "No activity update yet"}</p><div className="mt-4 border-t border-border pt-3"><p className="text-xs text-muted-foreground">{r.is_cancelled ? "Last recorded milestone" : "What happens next"}</p><p className="mt-1 text-sm font-medium">{r.is_cancelled ? labelFor(r.stage) : journey.next ? labelFor(journey.next.stage) : "Journey complete"}</p></div></CardContent></Card>
-        <RouteOverview origin={r.origin} destination={r.destination} mode={r.mode} />
+      <div className="grid overflow-hidden rounded-xl border border-border bg-card lg:grid-cols-[minmax(0,1fr)_300px]">
+        <RouteMap origin={r.origin} destination={r.destination} mode={r.mode} className="rounded-none border-0 [&>div:first-child]:min-h-80 [&>div:first-child>div]:min-h-80" />
+        <aside className="flex flex-col justify-center border-t border-border p-6 lg:border-t-0 lg:border-l"><p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Current situation</p><p className="mt-3 font-heading text-2xl font-semibold">{r.is_cancelled ? "Cancelled" : labelFor(r.stage)}</p><p className="mt-2 text-xs text-muted-foreground">{latest ? `Updated ${formatRelativeTime(latest.timestamp)}` : "No activity update yet"}</p><div className="mt-6 border-t border-border pt-5"><p className="text-xs text-muted-foreground">{r.is_cancelled ? "Last recorded milestone" : "What happens next"}</p><p className="mt-2 text-sm font-medium">{r.is_cancelled ? labelFor(r.stage) : journey.next ? labelFor(journey.next.stage) : "Journey complete"}</p></div></aside>
       </div>
 
-      {!r.is_cancelled && <Card><CardContent className="overflow-x-auto py-5"><p className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">Journey</p><JourneyRail stages={stages} currentStage={r.stage} /></CardContent></Card>}
+      {!r.is_cancelled && <section className="border-b border-border pb-6"><p className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">Journey</p><JourneyRail stages={stages} currentStage={r.stage} /></section>}
 
-      <Card>
-        <CardContent className="py-6">
-          <p className="mb-4 text-xs font-medium tracking-wide text-muted-foreground uppercase">Current Status</p>
+      <details className="border-b border-border pb-5">
+          <summary className="cursor-pointer py-2 text-sm font-medium">Full shipment checklist</summary>
+          <div className="pt-5">
           <StageChecklist items={journey.items} />
-        </CardContent>
-      </Card>
+          </div>
+      </details>
 
-      <Card>
-        <CardContent className="py-6">
-          <p className="mb-4 text-xs font-medium tracking-wide text-muted-foreground uppercase">Activity</p>
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <section>
+          <h2 className="mb-5 font-heading text-lg font-semibold">Shipment activity</h2>
           <EventTimeline entries={r.status_history} />
-        </CardContent>
-      </Card>
+        </section>
 
       {r.references.length > 0 && (
-        <Card>
-          <CardContent className="py-6">
+        <section className="border-t border-border pt-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6">
             <p className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">References</p>
             <ul className="space-y-1.5 text-sm">
               {r.references.map((ref, i) => (
-                <li key={i} className="flex items-center justify-between rounded-lg bg-muted px-3 py-1.5">
+                <li key={i} className="flex flex-wrap items-center justify-between gap-2 border-b border-border py-3">
                   <span className="text-muted-foreground">{ref.type.replace("_", " ")}</span>
                   <span className="font-medium tabular-nums">{ref.value}</span>
                 </li>
               ))}
             </ul>
-          </CardContent>
-        </Card>
+        </section>
       )}
+      </div>
     </div>
   )
 }

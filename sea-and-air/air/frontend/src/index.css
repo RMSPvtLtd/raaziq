@@ -6,29 +6,31 @@
 :root {
   --radius: 0.5rem;
   --sidebar-width: 15rem;
+  --sidebar-width-collapsed: 4.5rem;
   --topbar-height: 3.5rem;
 
-  /* Professional navy/slate palette for an internal logistics tool --
-     see ui-ux-pro-max "B2B Service" color result. */
-  --background: #f8fafc;
+  /* Solid colors sampled from the official raaziq.com logo.png asset. */
+  --background: #f5f6f8;
   --foreground: #0f172a;
   --card: #ffffff;
   --card-foreground: #0f172a;
   --popover: #ffffff;
   --popover-foreground: #0f172a;
-  --primary: #0f172a;
+  --brand-navy: #21305a;
+  --brand-green: #659f2f;
+  --primary: var(--brand-navy);
   --primary-foreground: #ffffff;
   --secondary: #eef2f7;
   --secondary-foreground: #0f172a;
   --muted: #eef2f6;
   --muted-foreground: #64748b;
-  --accent: #eaf2f8;
-  --accent-foreground: #0369a1;
+  --accent: #eff6e8;
+  --accent-foreground: #426d1f;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
   --border: #e2e8f0;
   --input: #e2e8f0;
-  --ring: #0f172a;
+  --ring: var(--brand-navy);
 
   /* Semantic status colors -- used for shipment stage / risk indicators,
      never as decorative accents. Each pairs with an icon or label, never
@@ -50,19 +52,21 @@
   --card-foreground: #e2e8f0;
   --popover: #111a2c;
   --popover-foreground: #e2e8f0;
-  --primary: #e2e8f0;
-  --primary-foreground: #0f172a;
+  --brand-navy: #7f93c8;
+  --brand-green: #91bf5a;
+  --primary: var(--brand-green);
+  --primary-foreground: #14213f;
   --secondary: #1c2739;
   --secondary-foreground: #e2e8f0;
   --muted: #1c2739;
   --muted-foreground: #94a3b8;
-  --accent: #17293b;
-  --accent-foreground: #7dd3fc;
+  --accent: #23351d;
+  --accent-foreground: #b8dc8e;
   --destructive: #f87171;
   --destructive-foreground: #1f0a0a;
   --border: #22314a;
   --input: #22314a;
-  --ring: #7dd3fc;
+  --ring: var(--brand-green);
 
   --status-success: #4ade80;
   --status-success-foreground: #052e14;
@@ -94,6 +98,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand-navy: var(--brand-navy);
+  --color-brand-green: var(--brand-green);
 
   --color-status-success: var(--status-success);
   --color-status-success-foreground: var(--status-success-foreground);
@@ -110,7 +116,7 @@
   --radius-xl: calc(var(--radius) + 4px);
 
   --font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
-  --font-heading: "Lexend", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
 }
 
 @layer base {
@@ -122,6 +128,7 @@
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading;
+    letter-spacing: -0.025em;
   }
   /* Tabular figures for money/weight/dates in tables -- prevents column
      jitter as digits change (ui-ux-pro-max: number-tabular). */

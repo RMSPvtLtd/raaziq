@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { MagnifyingGlass, Plus, UserCircle } from "@phosphor-icons/react"
 import { PageHeader } from "@/components/shared/PageHeader"
@@ -63,19 +63,16 @@ export function WorkersAdminPage() {
       />
 
       {loading && <LoadingState rows={4} />}
-      {!loading && error && <ErrorState message={error} onRetry={workers.reload} />}
+      {!loading && error && <ErrorState message={error} onRetry={() => { areas.reload(); workers.reload() }} />}
 
       {!loading && !error && (
         <><div className="relative mb-4"><MagnifyingGlass size={17} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search workers" placeholder="Search worker, username, area, or stage…" className="pl-9" /></div>
-        <WorkerMatrix rows={rows} onChanged={workers.reload} />
-        <div className="space-y-6 lg:hidden">
-          {mobileAreas.map(({ area, workers: areaWorkers }, i) => {
+        <div className="grid items-start gap-6 xl:grid-cols-2">
+          {mobileAreas.map(({ area, workers: areaWorkers }) => {
             const group = groupFor(area.stage)
-            const previousGroup = i > 0 ? groupFor(mobileAreas[i - 1].area.stage) : null
-            const showGroupHeader = group !== null && group !== previousGroup
             return (
               <div key={area.id}>
-                {showGroupHeader && (
+                {group && (
                   <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                     {group}
                   </p>
@@ -84,8 +81,8 @@ export function WorkersAdminPage() {
                   <CardContent className="py-4">
                     <div className="mb-3 flex items-center gap-2">
                       <h2 className="font-heading text-sm font-semibold text-foreground">{area.name}</h2>
-                      <Badge variant="outline" className="text-[11px]">
-                        {areaWorkers.length} worker{areaWorkers.length === 1 ? "" : "s"}
+                      <Badge variant="outline" className="ml-auto text-xs">
+                        {areaWorkers.filter((worker) => worker.is_active).length} active / {areaWorkers.length} total
                       </Badge>
                     </div>
                     {areaWorkers.length === 0 ? (
@@ -95,12 +92,13 @@ export function WorkersAdminPage() {
                         {areaWorkers.map((w) => (
                           <li
                             key={w.id}
-                            className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2 text-sm"
+                            className="flex flex-wrap items-center justify-between gap-3 border-t border-border py-3 text-sm"
                           >
-                            <span className="flex items-center gap-2">
+                            <span className="flex min-w-0 flex-wrap items-center gap-2">
                               <UserCircle size={18} className="text-muted-foreground" />
                               <span className="font-medium text-foreground">{w.name}</span>
                               <span className="text-muted-foreground">@{w.username}</span>
+                              <Badge variant={w.is_active ? "secondary" : "outline"}>{w.is_active ? "Active" : "Inactive"}</Badge>
                             </span>
                             <ToggleActiveButton
                               workerId={w.id}
@@ -120,10 +118,6 @@ export function WorkersAdminPage() {
       )}
     </div>
   )
-}
-
-function WorkerMatrix({ rows, onChanged }: { rows: { area: Area; worker: Worker | null }[]; onChanged: () => void }) {
-  return <div className="hidden overflow-auto rounded-xl border border-border lg:block"><table className="w-full text-sm"><thead className="bg-muted/40"><tr><th className="h-10 px-3 text-left font-medium">Area</th><th className="px-3 text-left font-medium">Stage</th><th className="px-3 text-left font-medium">Worker</th><th className="px-3 text-left font-medium">Username</th><th className="px-3 text-left font-medium">Status</th><th className="px-3 text-right font-medium">Actions</th></tr></thead><tbody>{rows.map(({ area, worker }) => <Fragment key={`${area.id}-${worker?.id ?? "empty"}`}><tr className="border-t border-border"><td className="p-3 font-medium">{area.name}</td><td className="p-3 text-muted-foreground">{area.stage.replaceAll("_", " ")}</td><td className="p-3">{worker?.name ?? "No worker assigned"}</td><td className="p-3 text-muted-foreground">{worker ? `@${worker.username}` : "—"}</td><td className="p-3"><Badge variant="outline">{worker ? worker.is_active ? "Active" : "Inactive" : "Unstaffed"}</Badge></td><td className="p-3 text-right">{worker && <ToggleActiveButton workerId={worker.id} isActive={worker.is_active} onChanged={onChanged} />}</td></tr></Fragment>)}</tbody></table></div>
 }
 
 function ToggleActiveButton({

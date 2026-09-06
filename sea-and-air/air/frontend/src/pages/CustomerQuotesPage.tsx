@@ -2,6 +2,7 @@ import { Link } from "react-router-dom"
 import { Receipt } from "@phosphor-icons/react"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { LoadingState, ErrorState, EmptyState } from "@/components/shared/States"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -89,6 +90,7 @@ function InquiryGroupCard({ quotes }: { quotes: Quote[] }) {
                 <TableHead>Status</TableHead>
                 <TableHead>Total</TableHead>
                 <TableHead>Valid Until</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -111,12 +113,13 @@ function InquiryGroupCard({ quotes }: { quotes: Quote[] }) {
                   <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
                     {formatDate(quote.valid_until)}
                   </TableCell>
+                  <TableCell className="text-right"><div className="flex justify-end gap-2"><Button asChild variant="outline" size="sm"><Link to={`/customer/quotes/${quote.id}`}>View breakdown</Link></Button>{quote.is_current && (quote.status === "draft" || quote.status === "sent") && <Button asChild size="sm"><Link to={`/customer/quotes/${quote.id}?accept=true`}>Select offer</Link></Button>}</div></TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
-        <ul className="space-y-2 p-4 md:hidden" aria-label="Carrier offers">{ordered.map((quote) => <li key={quote.id} className={!quote.is_current ? "rounded-lg border border-border p-3 opacity-60" : "rounded-lg border border-border p-3"}><div className="flex items-start justify-between gap-3"><div><Link to={`/customer/quotes/${quote.id}`} className="font-medium tabular-nums hover:underline">Q-{quote.root_quote_id ?? quote.id} Rev {quote.revision_number}</Link><p className="text-sm text-muted-foreground">{quote.carrier ?? "Unspecified carrier"}</p></div><Badge variant="outline">{STATUS_LABEL[quote.status]}</Badge></div><div className="mt-3 flex items-end justify-between gap-3"><p className="text-xs text-muted-foreground">Valid {formatDate(quote.valid_until)}</p><div className="text-right">{quote.id === lowestQuoteId && <p className="text-xs text-status-success">Lowest price</p>}<p className="font-heading font-semibold tabular-nums">{formatMoney(quote.total, quote.currency)}</p></div></div></li>)}</ul>
+        <ul className="space-y-2 p-4 md:hidden" aria-label="Carrier offers">{ordered.map((quote) => <li key={quote.id} className={!quote.is_current ? "rounded-lg border border-border p-3 opacity-60" : "rounded-lg border border-border p-3"}><div className="flex items-start justify-between gap-3"><div><Link to={`/customer/quotes/${quote.id}`} className="font-medium tabular-nums hover:underline">Q-{quote.root_quote_id ?? quote.id} Rev {quote.revision_number}</Link><p className="text-sm text-muted-foreground">{quote.carrier ?? "Unspecified carrier"}</p></div><Badge variant="outline">{STATUS_LABEL[quote.status]}</Badge></div><div className="mt-3 flex items-end justify-between gap-3"><p className="text-xs text-muted-foreground">Valid {formatDate(quote.valid_until)}</p><div className="text-right">{quote.id === lowestQuoteId && <p className="text-xs text-status-success">Lowest price</p>}<p className="font-heading font-semibold tabular-nums">{formatMoney(quote.total, quote.currency)}</p></div></div><div className="mt-3 grid grid-cols-2 gap-2"><Button asChild variant="outline" size="sm"><Link to={`/customer/quotes/${quote.id}`}>View breakdown</Link></Button>{quote.is_current && (quote.status === "draft" || quote.status === "sent") && <Button asChild size="sm"><Link to={`/customer/quotes/${quote.id}?accept=true`}>Select offer</Link></Button>}</div></li>)}</ul>
       </CardContent>
     </Card>
   )

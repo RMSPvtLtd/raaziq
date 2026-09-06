@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { effectiveQuoteStatus, manualSubtotal, prepareQuoteComparison, quoteReference } from "../src/lib/quote-comparison.ts"
+import { comparisonMatrix, effectiveQuoteStatus, manualSubtotal, prepareQuoteComparison, quoteReference } from "../src/lib/quote-comparison.ts"
 
 test("comparison keeps current offers, sorts by real totals, and names one lowest price", () => {
   const quotes = [
@@ -23,6 +23,19 @@ test("comparison does not claim a lowest price across currencies", () => {
   ]
 
   assert.equal(prepareQuoteComparison(quotes).lowestQuoteId, null)
+})
+
+test("comparison matrix aligns charge kinds across carriers", () => {
+  const rows = comparisonMatrix([
+    { id: 1, line_items: [{ kind: "freight", final_total: "100" }, { kind: "handling", final_total: "25" }] },
+    { id: 2, line_items: [{ kind: "freight", final_total: "90" }, { kind: "documentation", final_total: "10" }, { kind: "freight", final_total: "5" }] },
+  ])
+
+  assert.deepEqual(rows, [
+    { kind: "freight", label: "Freight", amounts: { 1: 100, 2: 95 } },
+    { kind: "documentation", label: "Documentation", amounts: { 1: null, 2: 10 } },
+    { kind: "handling", label: "Handling", amounts: { 1: 25, 2: null } },
+  ])
 })
 
 test("manual subtotal uses only finite entered amounts", () => {

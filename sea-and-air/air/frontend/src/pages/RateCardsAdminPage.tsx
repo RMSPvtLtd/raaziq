@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { MagnifyingGlass, Plus, Scales, Trash } from "@phosphor-icons/react"
 import { PageHeader } from "@/components/shared/PageHeader"
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { LoadingState, ErrorState, EmptyState } from "@/components/shared/States"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -10,13 +11,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+  Sheet as Dialog,
+  SheetContent as DialogContent,
+  SheetFooter as DialogFooter,
+  SheetHeader as DialogHeader,
+  SheetTitle as DialogTitle,
+  SheetTrigger as DialogTrigger,
+  SheetDescription,
+} from "@/components/ui/sheet"
 import { useAsync } from "@/hooks/useAsync"
 import { rateCardsApi, ApiError } from "@/lib/api/client"
 import { formatDate, formatMoney } from "@/lib/format"
@@ -116,13 +118,14 @@ function RateCardRecords({ rateCards, onChanged }: { rateCards: RateCard[]; onCh
 
 function RateCardActions({ rateCard, onChanged }: { rateCard: RateCard; onChanged: () => void }) {
   const [deleting, setDeleting] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   async function handleDelete() {
-    if (!confirm(`Delete the ${rateCard.origin} → ${rateCard.destination} (${rateCard.mode}) rate card?`)) return
     setDeleting(true)
     try {
       await rateCardsApi.remove(rateCard.id)
       toast.success("Rate card deleted")
+      setConfirmOpen(false)
       onChanged()
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not delete rate card.")
@@ -131,7 +134,7 @@ function RateCardActions({ rateCard, onChanged }: { rateCard: RateCard; onChange
     }
   }
 
-  return <div className="flex items-center justify-end gap-2"><RateCardFormDialog rateCard={rateCard} onSaved={onChanged} /><Button variant="outline" size="icon-sm" aria-label={`Delete ${rateCard.origin} to ${rateCard.destination} rate card`} disabled={deleting} onClick={handleDelete}><Trash size={14} /></Button></div>
+  return <div className="flex items-center justify-end gap-2"><RateCardFormDialog rateCard={rateCard} onSaved={onChanged} /><Button variant="outline" size="icon-sm" aria-label={`Delete ${rateCard.origin} to ${rateCard.destination} rate card`} disabled={deleting} onClick={() => setConfirmOpen(true)}><Trash size={14} /></Button><ConfirmDialog open={confirmOpen} onOpenChange={setConfirmOpen} title="Delete rate card?" description={`${rateCard.origin} → ${rateCard.destination} · ${rateCard.carrier || "Any carrier"}. This pricing card will no longer be available for new quotes.`} pending={deleting} onConfirm={handleDelete} /></div>
 }
 
 function RateCardRow({ rateCard, onChanged }: { rateCard: RateCard; onChanged: () => void }) {
@@ -302,6 +305,7 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
     <Dialog
       open={open}
       onOpenChange={(next) => {
+        if (submitting) return
         setOpen(next)
         if (next) resetForm()
       }}
@@ -318,12 +322,14 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] sm:max-w-6xl! overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="w-full! sm:max-w-6xl! gap-0" showCloseButton={!submitting}>
+        <DialogHeader className="border-b px-6 py-5">
           <DialogTitle>{editing ? "Edit rate card" : "New rate card"}</DialogTitle>
+          <SheetDescription>Configure lane pricing, weight breaks and additional charges.</SheetDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-h-0 flex-1 overflow-y-auto space-y-8 p-6">
+          <h2 className="text-lg font-semibold">Lane &amp; carrier</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="rate-origin">Origin</Label>
@@ -362,6 +368,7 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
                 placeholder="Optional"
               />
             </div>
+            <h2 className="mt-5 text-lg font-semibold sm:col-span-2">Commercial settings</h2>
             <div className="space-y-1.5">
               <Label htmlFor="rate-currency">Currency</Label>
               <Input
@@ -396,30 +403,32 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Weight/volume breaks</Label>
+              <h2 className="text-lg font-semibold">Weight / volume breaks</h2>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setForm((f) => ({ ...f, breaks: [...f.breaks, EMPTY_BREAK] }))}
               >
-                <Plus size={14} />
+                <Plus size={14} /> Add break
               </Button>
             </div>
-            {form.breaks.map((b, i) => (
-              <div key={i} className="grid grid-cols-2 gap-2 rounded-md border border-border p-2 sm:grid-cols-6">
+            <div className="overflow-x-auto rounded-lg border"><table className="w-full min-w-[900px] text-sm"><thead className="bg-muted/50"><tr>{["Min weight", "Max weight", "Min volume", "Max volume", "Unit", "Rate", "Description", "Actions"].map((label) => <th key={label} className="p-2 text-left font-medium">{label}</th>)}</tr></thead><tbody>{form.breaks.map((b, i) => (
+              <tr key={i} className="border-t [&>td]:p-2"><td>
                 <Input
                   aria-label={`Break ${i + 1} minimum weight`}
                   placeholder="Min kg"
                   value={b.min_weight ?? ""}
                   onChange={(e) => updateBreak(i, { min_weight: e.target.value || null })}
                 />
+                </td><td>
                 <Input
                   aria-label={`Break ${i + 1} maximum weight`}
                   placeholder="Max kg"
                   value={b.max_weight ?? ""}
                   onChange={(e) => updateBreak(i, { max_weight: e.target.value || null })}
                 />
+                </td><td><Input aria-label={`Break ${i + 1} minimum volume`} placeholder="Min cbm" value={b.min_volume ?? ""} onChange={(e) => updateBreak(i, { min_volume: e.target.value || null })} /></td><td><Input aria-label={`Break ${i + 1} maximum volume`} placeholder="Max cbm" value={b.max_volume ?? ""} onChange={(e) => updateBreak(i, { max_volume: e.target.value || null })} /></td><td>
                 <Select value={b.unit} onValueChange={(v) => updateBreak(i, { unit: v as UnitOfMeasure })}>
                   <SelectTrigger aria-label={`Break ${i + 1} unit`}>
                     <SelectValue />
@@ -432,7 +441,9 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
                     ))}
                   </SelectContent>
                 </Select>
+                </td><td>
                 <Input aria-label={`Break ${i + 1} rate`} placeholder="Rate" value={b.rate} onChange={(e) => updateBreak(i, { rate: e.target.value })} />
+                </td><td>
                 <Input
                   aria-label={`Break ${i + 1} description`}
                   placeholder="Description"
@@ -440,30 +451,31 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
                   value={b.description ?? ""}
                   onChange={(e) => updateBreak(i, { description: e.target.value || null })}
                 />
+                </td><td>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="col-span-2 justify-self-start sm:col-span-6"
+                  aria-label={`Remove break ${i + 1}`}
                   disabled={form.breaks.length <= 1}
                   onClick={() => setForm((f) => ({ ...f, breaks: f.breaks.filter((_, idx) => idx !== i) }))}
                 >
-                  <Trash size={14} className="mr-1" /> Remove break
+                  <Trash size={14} />
                 </Button>
-              </div>
-            ))}
+              </td></tr>
+            ))}</tbody></table></div>
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Accessory charges</Label>
+              <h2 className="text-lg font-semibold">Additional charges</h2>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setForm((f) => ({ ...f, charges: [...f.charges, EMPTY_CHARGE] }))}
               >
-                <Plus size={14} />
+                <Plus size={14} /> Add charge
               </Button>
             </div>
             {form.charges.map((c, i) => (
@@ -514,8 +526,9 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <section className="rounded-lg bg-muted/50 p-4"><h2 className="font-semibold">Review</h2><p className="mt-1 text-sm text-muted-foreground">{form.origin || "Origin"} → {form.destination || "Destination"} · {form.carrier || "Any carrier"} · {form.currency} · {form.breaks.length} breaks · {form.charges.length} additional charges</p></section>
+        <DialogFooter className="border-t bg-background sm:flex-row sm:justify-end">
+          <Button variant="outline" disabled={submitting} onClick={() => setOpen(false)}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!valid || submitting}>

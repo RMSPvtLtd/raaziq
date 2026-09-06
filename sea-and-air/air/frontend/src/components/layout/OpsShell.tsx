@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType, type FormEvent } from "react"
 import { NavLink, Outlet, useNavigate } from "react-router-dom"
-import { CalendarBlank, Key, List, MagnifyingGlass, Package, Plus, Receipt, Scales, SignOut, Truck, UserCircle, Users } from "@phosphor-icons/react"
+import { CalendarBlank, CaretDoubleLeft, CaretDoubleRight, Key, List, MagnifyingGlass, Package, Plus, Receipt, Scales, SignOut, UserCircle, Users } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/shared/ThemeToggle"
 import { ChangePasswordDialog } from "@/components/shared/ChangePasswordDialog"
@@ -18,15 +18,15 @@ const NAV_GROUPS: { label: string; links: { to: string; label: string; icon: Ico
   { label: "Network", links: [{ to: "/customers", label: "Customers", icon: UserCircle }, { to: "/workers", label: "Workers", icon: Users }] },
 ]
 
-function SidebarNav({ closeOnNavigate = false }: { closeOnNavigate?: boolean }) {
+function SidebarNav({ closeOnNavigate = false, collapsed = false }: { closeOnNavigate?: boolean; collapsed?: boolean }) {
   return (
     <nav className="space-y-5" aria-label="Operations navigation">
       {NAV_GROUPS.map((group) => (
         <div key={group.label}>
-          <p className="mb-1.5 px-3 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{group.label}</p>
+          <p className={cn("mb-1.5 px-3 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground", collapsed && "sr-only")}>{group.label}</p>
           <div className="space-y-0.5">
             {group.links.map(({ to, label, icon: Icon }) => {
-              const link = <NavLink to={to} end={to === "/overview"} className={({ isActive }) => cn("flex min-h-9 items-center gap-2.5 rounded-lg px-3 text-sm font-medium transition-colors duration-150", isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground")}><Icon size={17} aria-hidden="true" />{label}</NavLink>
+              const link = <NavLink to={to} end={to === "/overview"} aria-label={collapsed ? label : undefined} title={collapsed ? label : undefined} className={({ isActive }) => cn("flex min-h-10 items-center gap-2.5 rounded-lg px-3 text-sm font-medium transition-colors duration-150", collapsed && "justify-center px-0", isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground")}><Icon size={18} aria-hidden="true" /><span className={collapsed ? "sr-only" : undefined}>{label}</span></NavLink>
               return closeOnNavigate ? <SheetClose asChild key={to}>{link}</SheetClose> : <div key={to}>{link}</div>
             })}
           </div>
@@ -36,10 +36,10 @@ function SidebarNav({ closeOnNavigate = false }: { closeOnNavigate?: boolean }) 
   )
 }
 
-function AccountMenu({ name, username, logout, onChangePassword }: { name?: string; username?: string; logout: () => void; onChangePassword: () => void }) {
+function AccountMenu({ name, username, logout, onChangePassword, compact = false }: { name?: string; username?: string; logout: () => void; onChangePassword: () => void; compact?: boolean }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="max-w-44 gap-1.5 px-2.5"><UserCircle size={18} aria-hidden="true" /><span className="truncate">{name ?? "Account"}</span></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size={compact ? "icon" : "sm"} className={cn(!compact && "max-w-44 gap-1.5 px-2.5")} aria-label={compact ? (name ?? "Account") : undefined} title={compact ? (name ?? "Account") : undefined}><UserCircle size={18} aria-hidden="true" />{!compact && <span className="truncate">{name ?? "Account"}</span>}</Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>{username ?? "Signed in"}</DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -55,6 +55,13 @@ export function OpsShell() {
   const { opsUser, logout } = useOpsAuth()
   const [changePasswordOpen, setChangePasswordOpen] = useState(false)
   const [search, setSearch] = useState("")
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("raaziq-ops-sidebar-collapsed") === "true"
+    } catch {
+      return false
+    }
+  })
   const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -69,6 +76,14 @@ export function OpsShell() {
     return () => window.removeEventListener("keydown", focusSearch)
   }, [])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem("raaziq-ops-sidebar-collapsed", String(sidebarCollapsed))
+    } catch {
+      // The shell still works when storage is blocked.
+    }
+  }, [sidebarCollapsed])
+
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const term = search.trim()
@@ -77,14 +92,21 @@ export function OpsShell() {
 
   return (
     <div className="min-h-dvh bg-background lg:flex">
-      <aside className="hidden w-[var(--sidebar-width)] shrink-0 flex-col border-r border-border bg-card px-3 py-5 lg:flex" aria-label="Operations sidebar">
-        <NavLink to="/overview" className="mb-6 flex items-center gap-2 px-3 font-heading text-base font-semibold text-foreground"><Truck size={22} weight="fill" className="text-accent-foreground" aria-hidden="true" />Raaziq</NavLink>
-        <Button asChild className="mb-7 w-full justify-start gap-2 px-3"><NavLink to="/quotes/new"><Plus size={17} /> New Quote</NavLink></Button>
-        <SidebarNav />
+      <aside data-collapsed={sidebarCollapsed} className="hidden w-[var(--sidebar-width)] shrink-0 flex-col border-r border-border bg-card px-3 py-4 transition-[width] duration-200 ease-out data-[collapsed=true]:w-[var(--sidebar-width-collapsed)] lg:flex" aria-label="Operations sidebar">
+        <div className={cn("mb-5 flex items-start gap-2", sidebarCollapsed ? "flex-col items-center" : "justify-between")}>
+          <NavLink to="/overview" aria-label="Raaziq overview" className="flex min-h-12 items-center justify-center rounded-lg bg-white px-2">
+            <img src="/raaziq-logo.png" alt="Raaziq" width={161} height={133} className={cn("h-auto object-contain", sidebarCollapsed ? "w-10" : "w-24")} />
+          </NavLink>
+          <Button variant="ghost" size="icon-sm" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? "Expand operations sidebar" : "Collapse operations sidebar"} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+            {sidebarCollapsed ? <CaretDoubleRight size={17} aria-hidden="true" /> : <CaretDoubleLeft size={17} aria-hidden="true" />}
+          </Button>
+        </div>
+        <Button asChild className={cn("mb-7 w-full gap-2", sidebarCollapsed ? "px-0" : "justify-start px-3")}><NavLink to="/quotes/new" aria-label={sidebarCollapsed ? "New Quote" : undefined} title={sidebarCollapsed ? "New Quote" : undefined}><Plus size={17} /><span className={sidebarCollapsed ? "sr-only" : undefined}>New Quote</span></NavLink></Button>
+        <SidebarNav collapsed={sidebarCollapsed} />
         <div className="mt-auto space-y-3 border-t border-border pt-4">
-          <a href="/track" target="_blank" rel="noreferrer" className="flex min-h-9 items-center gap-2.5 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"><MagnifyingGlass size={17} aria-hidden="true" /> Customer Tracking <span aria-hidden="true">↗</span></a>
-          <div className="flex items-center justify-between px-2"><span className="text-xs text-muted-foreground">Theme</span><ThemeToggle /></div>
-          <AccountMenu name={opsUser?.name} username={opsUser?.username} logout={logout} onChangePassword={() => setChangePasswordOpen(true)} />
+          <a href="/track" target="_blank" rel="noreferrer" aria-label={sidebarCollapsed ? "Customer Tracking (opens in a new tab)" : undefined} title={sidebarCollapsed ? "Customer Tracking" : undefined} className={cn("flex min-h-10 items-center gap-2.5 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground", sidebarCollapsed && "justify-center px-0")}><MagnifyingGlass size={17} aria-hidden="true" /><span className={sidebarCollapsed ? "sr-only" : undefined}>Customer Tracking <span aria-hidden="true">↗</span></span></a>
+          <div className={cn("flex items-center px-2", sidebarCollapsed ? "justify-center" : "justify-between")}><span className={cn("text-xs text-muted-foreground", sidebarCollapsed && "sr-only")}>Theme</span><ThemeToggle /></div>
+          <AccountMenu compact={sidebarCollapsed} name={opsUser?.name} username={opsUser?.username} logout={logout} onChangePassword={() => setChangePasswordOpen(true)} />
         </div>
       </aside>
 
@@ -93,7 +115,7 @@ export function OpsShell() {
           <Sheet>
             <SheetTrigger asChild><Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open operations navigation"><List size={21} /></Button></SheetTrigger>
             <SheetContent side="left" className="w-[min(86vw,20rem)] p-0" aria-describedby="mobile-nav-description">
-              <SheetHeader className="border-b border-border px-5 py-5"><SheetTitle className="flex items-center gap-2"><Truck size={20} weight="fill" className="text-accent-foreground" /> Raaziq</SheetTitle><SheetDescription id="mobile-nav-description">Operations navigation</SheetDescription></SheetHeader>
+              <SheetHeader className="border-b border-border px-5 py-4"><SheetTitle><img src="/raaziq-logo.png" alt="Raaziq" width={161} height={133} className="h-auto w-20 rounded-md bg-white p-1" /></SheetTitle><SheetDescription id="mobile-nav-description">Operations navigation</SheetDescription></SheetHeader>
               <div className="overflow-y-auto px-3 py-5">
                 <Button asChild className="mb-7 w-full justify-start gap-2 px-3"><SheetClose asChild><NavLink to="/quotes/new"><Plus size={17} /> New Quote</NavLink></SheetClose></Button>
                 <SidebarNav closeOnNavigate />
@@ -101,7 +123,7 @@ export function OpsShell() {
               </div>
             </SheetContent>
           </Sheet>
-          <NavLink to="/overview" className="flex items-center gap-2 font-heading font-semibold lg:hidden"><Truck size={19} weight="fill" className="text-accent-foreground" /> Raaziq</NavLink>
+          <NavLink to="/overview" aria-label="Raaziq overview" className="rounded-md bg-white px-1.5 py-1 lg:hidden"><img src="/raaziq-logo.png" alt="Raaziq" width={161} height={133} className="h-8 w-auto" /></NavLink>
           <form onSubmit={submitSearch} className="min-w-0 max-w-md flex-1" role="search">
             <label htmlFor="ops-search" className="sr-only">Search shipments</label>
             <div className="relative"><MagnifyingGlass size={16} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input ref={searchRef} id="ops-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search shipments…" className="pl-8 pr-16" /><Button type="submit" variant="outline" size="xs" className="absolute right-1 top-1/2 h-6 -translate-y-1/2 px-2"><MagnifyingGlass className="sm:hidden" aria-hidden="true" /><span className="hidden sm:inline">Search</span><span className="sr-only sm:hidden">Search shipments</span></Button></div>

@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StageChecklist } from "@/components/shared/StageChecklist"
 import { EventTimeline } from "@/components/shared/EventTimeline"
 import { JourneyRail } from "@/components/shared/JourneyRail"
-import { RouteOverview } from "@/components/shared/RouteOverview"
+import { RouteMap } from "@/components/shared/RouteMap"
 import { ContainerTimeline } from "@/components/shared/ContainerTimeline"
 import { ContainerDetailCard } from "@/components/shared/ContainerDetailCard"
 import { LoadingState } from "@/components/shared/States"
@@ -32,6 +32,7 @@ export function TrackingPage() {
   const activeValue = mode === "sea" ? containerNumber : reference
 
   const [query, setQuery] = useState(activeValue ?? "")
+  useEffect(() => setQuery(activeValue ?? ""), [activeValue])
 
   function handleModeChange(next: string) {
     setQuery("")
@@ -46,36 +47,37 @@ export function TrackingPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-2xl border border-border bg-card px-4 py-8 sm:px-8">
-      <div className="text-center">
-        <h1 className="font-heading text-2xl font-semibold text-foreground sm:text-3xl">Track Your Shipment</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+    <div className="space-y-10">
+      <section className={`overflow-hidden rounded-xl bg-[#21305A] px-6 text-white sm:px-10 ${activeValue ? "py-5 sm:py-6" : "py-8 sm:py-12"}`}>
+      <div className="max-w-2xl">
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/65">Raaziq · Shipment visibility</p>
+        {activeValue ? <h1 className="font-heading text-2xl font-semibold">Track your shipment</h1> : <h1 className="font-heading text-4xl leading-[1.08] font-semibold tracking-tight sm:text-5xl">Every journey.<br /><span className="text-white/65">A clearer view.</span></h1>}
+        {!activeValue && <p className="mt-5 max-w-xl text-sm leading-relaxed text-white/75">
           {mode === "sea"
             ? "Enter your container number to see its current status."
             : "Enter your job number or any reference number (container, MAWB, HAWB, MBL, HBL)."}
-        </p>
+        </p>}
       </div>
 
-      <div className="flex flex-col items-center gap-4">
+      <div className={`${activeValue ? "mt-4" : "mt-8"} flex flex-col gap-4`}>
         <Tabs value={mode} onValueChange={handleModeChange}>
-          <TabsList>
-            <TabsTrigger value="air">Air</TabsTrigger>
-            <TabsTrigger value="sea">Sea</TabsTrigger>
+          <TabsList className="bg-white/10">
+            <TabsTrigger value="air" className="px-5 text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#20376f] dark:text-white/70 dark:data-[state=active]:bg-white dark:data-[state=active]:text-[#20376f]">Air freight</TabsTrigger>
+            <TabsTrigger value="sea" className="px-5 text-white/70 data-[state=active]:bg-white data-[state=active]:text-[#20376f] dark:text-white/70 dark:data-[state=active]:bg-white dark:data-[state=active]:text-[#20376f]">Sea freight</TabsTrigger>
           </TabsList>
         </Tabs>
 
-        <form onSubmit={handleSearch} className="flex w-full max-w-md gap-2">
+        <form onSubmit={handleSearch} className="flex w-full max-w-3xl flex-col gap-2 sm:flex-row">
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={mode === "sea" ? "e.g. TESU1234565" : "e.g. RAZ-2026-00001"}
-            className="text-center tabular-nums uppercase sm:text-left"
+            className="h-12 border-white/20 bg-white text-base text-[#20376f] tabular-nums placeholder:text-slate-500 dark:bg-white"
             aria-label={mode === "sea" ? "Container number" : "Shipment reference number"}
           />
-          <Button type="submit" className="shrink-0 gap-1.5">
+          <Button type="submit" className="h-12 shrink-0 gap-2 bg-white px-6 text-[#20376f] hover:bg-white/90">
             <MagnifyingGlass size={16} />
-            Track
+            Track shipment
           </Button>
         </form>
       </div>
@@ -83,15 +85,16 @@ export function TrackingPage() {
 
       {mode === "air" && reference && <AirTrackingResultView reference={reference} />}
       {mode === "sea" && containerNumber && <SeaTrackingResultView containerNumber={containerNumber} />}
+      {!activeValue && <div className="grid gap-6 border-t border-border pt-7 sm:grid-cols-2"><div><h2 className="text-sm font-semibold">Your reference, your journey</h2><p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">Find your shipment reference on your booking confirmation or shipping documents.</p></div><div><h2 className="text-sm font-semibold">Support along the way</h2><p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">For shipment enquiries or help finding a reference, contact your Raaziq account manager.</p></div></div>}
     </div>
   )
 }
 
 function AirTrackingResultView({ reference }: { reference: string }) {
-  const { stages, labelFor } = useStages()
+  const { stages, labelFor, loading: stagesLoading } = useStages()
   const result = useAsync(() => trackingApi.track(reference), [reference])
 
-  if (result.loading || stages.length === 0) return <LoadingState rows={4} />
+  if (result.loading || stagesLoading) return <LoadingState rows={4} />
 
   if (result.error) {
     return (
@@ -114,12 +117,13 @@ function AirTrackingResultView({ reference }: { reference: string }) {
   const journey = customerJourneyState(r.checklist, r.is_cancelled)
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div className="text-center">
-        <p className="font-heading text-xl font-semibold tabular-nums text-foreground">
+    <div className="space-y-6">
+      <div className="border-b border-border pb-5">
+        <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Tracking result</p>
+        <h2 className="font-heading text-2xl font-semibold tabular-nums text-foreground">
           {r.job_number ?? labelFor(r.stage)}
           {r.is_cancelled && <span className="ml-2 align-middle text-sm font-normal text-muted-foreground">(Cancelled)</span>}
-        </p>
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {r.origin} → {r.destination} · {MODE_LABEL[r.mode]}
         </p>
@@ -142,30 +146,29 @@ function AirTrackingResultView({ reference }: { reference: string }) {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card><CardContent className="py-5"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{r.is_cancelled ? "Shipment status" : "Current milestone"}</p><p className="mt-2 font-heading text-xl font-semibold">{r.is_cancelled ? "Cancelled" : labelFor(r.stage)}</p><p className="mt-1 text-sm text-muted-foreground">{latest ? `Updated ${formatRelativeTime(latest.timestamp)}` : "No activity update yet"}</p><div className="mt-4 border-t border-border pt-3"><p className="text-xs text-muted-foreground">{r.is_cancelled ? "Last recorded milestone" : "Next milestone"}</p><p className="mt-1 text-sm font-medium">{r.is_cancelled ? labelFor(r.stage) : journey.next ? labelFor(journey.next.stage) : "Journey complete"}</p></div></CardContent></Card>
-        <RouteOverview origin={r.origin} destination={r.destination} mode={r.mode} />
+      <div className="grid overflow-hidden rounded-xl border border-border bg-card lg:grid-cols-[minmax(0,1fr)_300px]">
+        <RouteMap origin={r.origin} destination={r.destination} mode={r.mode} className="rounded-none border-0 [&>div:first-child]:min-h-80 [&>div:first-child>div]:min-h-80" />
+        <aside className="flex flex-col justify-center border-t border-border p-6 lg:border-t-0 lg:border-l"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{r.is_cancelled ? "Shipment status" : "Current milestone"}</p><p className="mt-3 font-heading text-2xl font-semibold">{r.is_cancelled ? "Cancelled" : labelFor(r.stage)}</p><p className="mt-2 text-xs text-muted-foreground">{latest ? `Updated ${formatRelativeTime(latest.timestamp)}` : "No activity update yet"}</p><div className="mt-6 border-t border-border pt-5"><p className="text-xs text-muted-foreground">{r.is_cancelled ? "Last recorded milestone" : "Next milestone"}</p><p className="mt-2 text-sm font-medium">{r.is_cancelled ? labelFor(r.stage) : journey.next ? labelFor(journey.next.stage) : "Journey complete"}</p></div></aside>
       </div>
 
-      {!r.is_cancelled && <Card><CardContent className="overflow-x-auto py-5"><p className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">Shipment journey</p><JourneyRail stages={stages} currentStage={r.stage} /></CardContent></Card>}
+      {!r.is_cancelled && <section className="border-b border-border py-5"><p className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">Shipment journey</p><JourneyRail stages={stages} currentStage={r.stage} /></section>}
 
-      <Card>
-        <CardContent className="py-6">
-          <p className="mb-4 text-xs font-medium tracking-wide text-muted-foreground uppercase">Current Status</p>
+      <details className="border-b border-border pb-4">
+          <summary className="cursor-pointer py-2 text-sm font-medium">Full shipment checklist</summary>
+          <div className="pt-5">
           <StageChecklist items={journey.items} />
-        </CardContent>
-      </Card>
+          </div>
+      </details>
 
-      <Card>
-        <CardContent className="py-6">
-          <p className="mb-4 text-xs font-medium tracking-wide text-muted-foreground uppercase">Activity</p>
+      <details className="border-b border-border pb-4" open>
+          <summary className="cursor-pointer py-2 text-sm font-medium">Shipment activity</summary>
+          <div className="pt-5">
           <EventTimeline entries={r.status_history} />
-        </CardContent>
-      </Card>
+          </div>
+      </details>
 
       {r.references.length > 0 && (
-        <Card>
-          <CardContent className="py-6">
+        <section className="py-2">
             <p className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">References</p>
             <ul className="space-y-1.5 text-sm">
               {r.references.map((ref, i) => (
@@ -175,8 +178,7 @@ function AirTrackingResultView({ reference }: { reference: string }) {
                 </li>
               ))}
             </ul>
-          </CardContent>
-        </Card>
+        </section>
       )}
     </div>
   )
@@ -242,24 +244,24 @@ function SeaTrackingResultView({ containerNumber }: { containerNumber: string })
   const detail = r.details.find((item) => item.current_position || item.origin || item.destination)
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div className="text-center">
+    <div className="space-y-6">
+      <div className="border-b border-border pb-5">
         <p className="font-heading text-xl font-semibold tabular-nums text-foreground">{r.container_number}</p>
         <p className="mt-1 text-sm text-muted-foreground">Terminal: {r.terminal}</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2"><Card><CardContent className="py-5"><p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Current status</p><p className="mt-2 font-heading text-xl font-semibold text-foreground">{r.status}</p>{detail?.current_position && <><p className="mt-4 text-xs text-muted-foreground">Reported position</p><p className="mt-1 text-sm font-medium">{detail.current_position}</p></>}</CardContent></Card>{detail?.origin && detail.destination && <RouteOverview origin={detail.origin} destination={detail.destination} mode="sea" />}</div>
+      <div className="grid overflow-hidden rounded-xl border border-border bg-card lg:grid-cols-[minmax(0,1fr)_300px]">{detail?.origin && detail.destination ? <RouteMap origin={detail.origin} destination={detail.destination} mode="sea" reportedPosition={detail.current_position} className="rounded-none border-0 [&>div:first-child]:min-h-80 [&>div:first-child>div]:min-h-80" /> : <div className="flex min-h-56 items-center justify-center p-6 text-sm text-muted-foreground">Route information is not available for this container.</div>}<aside className="flex flex-col justify-center border-t border-border p-6 lg:border-t-0 lg:border-l"><p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Current status</p><p className="mt-3 font-heading text-2xl font-semibold text-foreground">{r.status}</p>{detail?.current_position && <><p className="mt-6 text-xs text-muted-foreground">Reported position</p><p className="mt-2 text-sm font-medium">{detail.current_position}</p></>}</aside></div>
 
-      <Card>
-        <CardContent className="py-6">
-          <p className="mb-4 text-xs font-medium tracking-wide text-muted-foreground uppercase">Timeline</p>
+      <details className="border-b border-border pb-5" open>
+          <summary className="cursor-pointer py-2 text-sm font-medium">Container timeline</summary>
+          <div className="pt-5">
           {r.events.length > 0 ? (
             <ContainerTimeline events={r.events} />
           ) : (
             <p className="text-sm text-muted-foreground">No movement events recorded yet.</p>
           )}
-        </CardContent>
-      </Card>
+          </div>
+      </details>
 
       {r.details.length > 0 && (
         <div className="space-y-4">

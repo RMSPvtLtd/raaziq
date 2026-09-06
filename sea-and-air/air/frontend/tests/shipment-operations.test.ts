@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { attentionText, customerJourneyState, formatWaitingAge, journeyRail, quickViewCounts, stageEnteredAt, withShipmentSearch } from "../src/lib/shipment-operations.ts"
+import { attentionText, customerJourneyState, formatWaitingAge, journeyRail, needsAttention, quickViewCounts, stageEnteredAt, withShipmentSearch } from "../src/lib/shipment-operations.ts"
 
 test("quick views count real shipment states", () => {
   const counts = quickViewCounts([
@@ -66,9 +66,18 @@ test("journey rail condenses consecutive stage groups while preserving the curre
   ])
 })
 
-test("attention text names both real attention states", () => {
+test("attention text names risk, holds, and high priority", () => {
   assert.equal(attentionText({ is_at_risk: true, is_on_hold: true }), "On hold · At risk")
   assert.equal(attentionText({ is_at_risk: false, is_on_hold: false }), null)
+  assert.equal(attentionText({ is_at_risk: false, is_on_hold: false, priority: "high" }), "High priority")
+  assert.equal(attentionText({ is_at_risk: true, is_on_hold: true, priority: "high" }), "On hold · At risk · High priority")
+})
+
+test("attention is one shared risk, hold, or high-priority rule", () => {
+  assert.equal(needsAttention({ is_at_risk: false, is_on_hold: false, priority: "high" }), true)
+  assert.equal(needsAttention({ is_at_risk: true, is_on_hold: false, priority: "low" }), true)
+  assert.equal(needsAttention({ is_at_risk: false, is_on_hold: true, priority: "low" }), true)
+  assert.equal(needsAttention({ is_at_risk: false, is_on_hold: false, priority: "medium" }), false)
 })
 
 test("shipment search updates preserve multiword drafts and existing URL filters", () => {
