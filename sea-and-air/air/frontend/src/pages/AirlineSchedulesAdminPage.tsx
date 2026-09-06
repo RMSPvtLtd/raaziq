@@ -1,6 +1,8 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { CalendarBlank, Plus, Trash } from "@phosphor-icons/react"
+import { CalendarBlank, DotsThree, MagnifyingGlass, Plus, Trash } from "@phosphor-icons/react"
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { LoadingState, ErrorState, EmptyState } from "@/components/shared/States"
 import { Card, CardContent } from "@/components/ui/card"
@@ -21,6 +23,7 @@ import {
 import { useAsync } from "@/hooks/useAsync"
 import { airlineSchedulesApi, ApiError } from "@/lib/api/client"
 import { cn } from "@/lib/utils"
+import { filterSchedules } from "@/lib/schedule-filters"
 import type { AirlineSchedule, AirlineScheduleInput, DayOfWeek, TransportMode } from "@/lib/api/types"
 
 const MODES: TransportMode[] = ["air", "sea", "road"]
@@ -51,12 +54,19 @@ function toInput(s: AirlineSchedule): AirlineScheduleInput {
 
 export function AirlineSchedulesAdminPage() {
   const schedules = useAsync(() => airlineSchedulesApi.list(), [])
+  const [search, setSearch] = useState("")
+  const [day, setDay] = useState<DayOfWeek | "all">("all")
+  const [lane, setLane] = useState("all")
+  const [carrier, setCarrier] = useState("all")
+  const lanes = [...new Set((schedules.data ?? []).map((s) => `${s.origin} → ${s.destination}`))].sort()
+  const carriers = [...new Set((schedules.data ?? []).map((s) => s.airline_name))].sort()
+  const visible = useMemo(() => filterSchedules(schedules.data ?? [], { search, day, lane, carrier }), [day, lane, carrier, schedules.data, search])
 
   return (
     <div>
       <PageHeader
         title="Flight Schedule"
-        description="Reference list of which days each airline flies a lane. For ops planning only -- has no effect on quoting or pricing."
+        description="Weekly lane reference for ops planning. It does not confirm availability or affect quoting and pricing."
         action={<ScheduleFormDialog onSaved={schedules.reload} />}
       />
 
@@ -70,26 +80,43 @@ export function AirlineSchedulesAdminPage() {
         />
       )}
 
-      {!schedules.loading && !schedules.error && (schedules.data?.length ?? 0) > 0 && (
-        <div className="space-y-3">
-          {schedules.data!.map((s) => (
-            <ScheduleRow key={s.id} schedule={s} onChanged={schedules.reload} />
-          ))}
+      {!schedules.loading && !schedules.error && (schedules.data?.length ?? 0) > 0 && <>
+        <div className="mb-3 flex items-center gap-2"><Badge variant="outline">Reference only</Badge><p className="text-xs text-muted-foreground">Confirm live capacity with the airline.</p></div>
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Select value={lane} onValueChange={setLane}><SelectTrigger className="w-full sm:w-52" aria-label="Filter schedule lane"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All lanes</SelectItem>{lanes.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
+          <Select value={carrier} onValueChange={setCarrier}><SelectTrigger className="w-full sm:w-44" aria-label="Filter schedule carrier"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All carriers</SelectItem>{carriers.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
+          <div className="relative min-w-0 flex-1"><MagnifyingGlass size={17} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search airline schedules" placeholder="Search airline, route, or mode…" className="pl-9" /></div>
+          <Select value={day} onValueChange={(value) => setDay(value as DayOfWeek | "all")}><SelectTrigger className="w-full sm:w-44" aria-label="Filter schedules by day"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All days</SelectItem>{DAYS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select>
+          <p className="self-center text-sm text-muted-foreground"><span className="font-medium tabular-nums text-foreground">{visible.length}</span> result{visible.length === 1 ? "" : "s"}</p>
         </div>
-      )}
+        {visible.length === 0 ? <EmptyState icon={<CalendarBlank size={32} />} title="No schedules match this view" description="Try another airline, route, or day." action={<Button variant="outline" onClick={() => { setSearch(""); setDay("all"); setLane("all"); setCarrier("all") }}>Clear filters</Button>} /> : <ScheduleRecords schedules={visible} onChanged={schedules.reload} />}
+      </>}
     </div>
   )
 }
 
-function ScheduleRow({ schedule, onChanged }: { schedule: AirlineSchedule; onChanged: () => void }) {
+function ScheduleRecords({ schedules, onChanged }: { schedules: AirlineSchedule[]; onChanged: () => void }) {
+  return <>
+    <div className="hidden max-h-[min(62vh,46rem)] overflow-auto rounded-xl border border-border lg:block">
+      <table className="w-full text-sm">
+        <thead className="sticky top-0 z-10 bg-background shadow-[0_1px_0_hsl(var(--border))]"><tr><th className="h-10 px-3 text-left font-medium">Airline</th><th className="px-3 text-left font-medium">Lane</th><th className="px-3 text-left font-medium">Mode</th>{DAYS.map((item) => <th key={item.value} className="px-2 text-center font-medium">{item.label}</th>)}<th className="px-3 text-left font-medium">Notes</th><th className="px-3 text-right font-medium">Actions</th></tr></thead>
+        <tbody>{schedules.map((schedule) => <tr key={schedule.id} className="border-t border-border hover:bg-muted/40"><td className="p-3 font-medium">{schedule.airline_name}</td><td className="p-3 whitespace-nowrap">{schedule.origin} → {schedule.destination}</td><td className="p-3"><Badge variant="outline" className="text-[10px] uppercase">{schedule.mode}</Badge></td>{DAYS.map((item) => <td key={item.value} className="p-2 text-center" aria-label={`${item.label}: ${schedule.days_of_week.includes(item.value) ? "operates" : "does not operate"}`}><span aria-hidden="true" className={cn("inline-block size-2 rounded-full", schedule.days_of_week.includes(item.value) ? "bg-primary" : "bg-muted-foreground/20")} /></td>)}<td className="max-w-56 truncate p-3 text-muted-foreground" title={schedule.notes ?? undefined}>{schedule.notes || "—"}</td><td className="p-3"><ScheduleActions schedule={schedule} onChanged={onChanged} /></td></tr>)}</tbody>
+      </table>
+    </div>
+    <div className="space-y-3 lg:hidden">{schedules.map((schedule) => <ScheduleRow key={schedule.id} schedule={schedule} onChanged={onChanged} />)}</div>
+  </>
+}
+
+function ScheduleActions({ schedule, onChanged }: { schedule: AirlineSchedule; onChanged: () => void }) {
   const [deleting, setDeleting] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   async function handleDelete() {
-    if (!confirm(`Delete ${schedule.airline_name}'s ${schedule.origin} → ${schedule.destination} schedule?`)) return
     setDeleting(true)
     try {
       await airlineSchedulesApi.remove(schedule.id)
       toast.success("Schedule deleted")
+      setConfirmOpen(false)
       onChanged()
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not delete schedule.")
@@ -97,6 +124,11 @@ function ScheduleRow({ schedule, onChanged }: { schedule: AirlineSchedule; onCha
       setDeleting(false)
     }
   }
+
+  return <div className="flex items-center justify-end gap-2"><ScheduleFormDialog schedule={schedule} onSaved={onChanged} /><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`More actions for ${schedule.airline_name}`}><DotsThree size={20} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem variant="destructive" onSelect={() => setConfirmOpen(true)}><Trash size={14} /> Delete schedule</DropdownMenuItem></DropdownMenuContent></DropdownMenu><ConfirmDialog open={confirmOpen} onOpenChange={setConfirmOpen} title="Delete schedule?" description={`${schedule.airline_name} · ${schedule.origin} → ${schedule.destination}. This removes the weekly planning reference.`} pending={deleting} onConfirm={handleDelete} /></div>
+}
+
+function ScheduleRow({ schedule, onChanged }: { schedule: AirlineSchedule; onChanged: () => void }) {
 
   return (
     <Card>
@@ -113,12 +145,7 @@ function ScheduleRow({ schedule, onChanged }: { schedule: AirlineSchedule; onCha
               {schedule.origin} &rarr; {schedule.destination}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <ScheduleFormDialog schedule={schedule} onSaved={onChanged} />
-            <Button variant="outline" size="sm" disabled={deleting} onClick={handleDelete}>
-              <Trash size={14} />
-            </Button>
-          </div>
+          <ScheduleActions schedule={schedule} onChanged={onChanged} />
         </div>
 
         <div className="flex flex-wrap gap-1.5">
@@ -211,7 +238,7 @@ function ScheduleFormDialog({ schedule, onSaved }: { schedule?: AirlineSchedule;
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[90vh] sm:max-w-3xl! overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editing ? "Edit flight schedule" : "New flight schedule"}</DialogTitle>
         </DialogHeader>
@@ -219,20 +246,22 @@ function ScheduleFormDialog({ schedule, onSaved }: { schedule?: AirlineSchedule;
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>Airline</Label>
+              <Label htmlFor="schedule-airline">Airline</Label>
               <Input
+                id="schedule-airline"
                 value={form.airline_name}
                 onChange={(e) => setForm((f) => ({ ...f, airline_name: e.target.value }))}
                 placeholder="e.g. PIA Cargo"
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Origin</Label>
-              <Input value={form.origin} onChange={(e) => setForm((f) => ({ ...f, origin: e.target.value }))} placeholder="e.g. Lahore" />
+              <Label htmlFor="schedule-origin">Origin</Label>
+              <Input id="schedule-origin" value={form.origin} onChange={(e) => setForm((f) => ({ ...f, origin: e.target.value }))} placeholder="e.g. Lahore" />
             </div>
             <div className="space-y-1.5">
-              <Label>Destination</Label>
+              <Label htmlFor="schedule-destination">Destination</Label>
               <Input
+                id="schedule-destination"
                 value={form.destination}
                 onChange={(e) => setForm((f) => ({ ...f, destination: e.target.value }))}
                 placeholder="e.g. London"
@@ -241,7 +270,7 @@ function ScheduleFormDialog({ schedule, onSaved }: { schedule?: AirlineSchedule;
             <div className="space-y-1.5">
               <Label>Mode</Label>
               <Select value={form.mode} onValueChange={(v) => setForm((f) => ({ ...f, mode: v as TransportMode }))}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full" aria-label="Transport mode">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -264,9 +293,10 @@ function ScheduleFormDialog({ schedule, onSaved }: { schedule?: AirlineSchedule;
                   <button
                     key={d.value}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => toggleDay(d.value)}
                     className={cn(
-                      "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                      "min-h-11 min-w-11 rounded-md border px-2.5 py-1 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
                       active
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-border bg-transparent text-muted-foreground hover:bg-muted"
@@ -280,8 +310,9 @@ function ScheduleFormDialog({ schedule, onSaved }: { schedule?: AirlineSchedule;
           </div>
 
           <div className="space-y-1.5">
-            <Label>Notes</Label>
+            <Label htmlFor="schedule-notes">Notes</Label>
             <Textarea
+              id="schedule-notes"
               rows={2}
               value={form.notes ?? ""}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value || null }))}

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Navigate, useNavigate } from "react-router-dom"
-import { Buildings, Warning } from "@phosphor-icons/react"
+import { Warning } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
@@ -38,7 +38,7 @@ export function OpsLoginPage() {
       <Card className="w-full max-w-sm">
         <CardContent className="pt-6">
           <div className="mb-6 flex flex-col items-center text-center">
-            <Buildings size={28} weight="fill" className="mb-2 text-accent-foreground" />
+            <img src="/raaziq-logo.png" alt="Raaziq" width={161} height={133} className="mb-3 h-18 w-auto rounded-lg bg-white p-1" />
             <h1 className="font-heading text-lg font-semibold text-foreground">Ops Sign In</h1>
             <p className="mt-1 text-sm text-muted-foreground">Internal access for Raaziq operations staff.</p>
           </div>

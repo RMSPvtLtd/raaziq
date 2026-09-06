@@ -49,7 +49,7 @@ export function CustomerShipmentsPage() {
         />
       )}
       {!shipments.loading && !shipments.error && (shipments.data?.length ?? 0) > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <><div className="hidden overflow-x-auto rounded-xl border border-border md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -86,7 +86,7 @@ export function CustomerShipmentsPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </div><ul className="space-y-2 md:hidden" aria-label="Shipments">{shipments.data!.map((shipment) => <li key={shipment.id} className="rounded-xl border border-border p-4"><div className="flex items-start justify-between gap-3"><Link to={`/customer/shipments/${shipment.id}`} className="font-medium tabular-nums hover:underline">{shipment.job_number ?? `Inquiry #${shipment.id}`}</Link><StageBadge stage={shipment.stage} /></div><p className="mt-2 text-sm">{shipment.origin} → {shipment.destination}</p><div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs text-muted-foreground">Updated {formatDateTime(shipment.updated_at)}</p><div className="flex gap-1">{shipment.is_cancelled && <Badge variant="secondary">Cancelled</Badge>}{!shipment.is_cancelled && shipment.is_at_risk && <RiskBadge />}</div></div></li>)}</ul></>
       )}
     </div>
   )

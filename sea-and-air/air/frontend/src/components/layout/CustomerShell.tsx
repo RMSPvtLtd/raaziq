@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom"
-import { FileText, Package, Receipt, SignOut, Truck } from "@phosphor-icons/react"
+import { FileText, Package, Receipt, SignOut } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils"
 import { ThemeToggle } from "@/components/shared/ThemeToggle"
 import { Button } from "@/components/ui/button"
@@ -26,12 +26,12 @@ export function CustomerShell() {
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-2 px-3 sm:gap-6 sm:px-6">
           <NavLink
             to="/customer/shipments"
-            className="flex shrink-0 items-center gap-2 font-heading text-base font-semibold text-foreground"
+            aria-label="Raaziq customer portal"
+            className="flex shrink-0 items-center rounded-md bg-white px-1.5 py-1"
           >
-            <Truck size={22} weight="fill" className="text-accent-foreground" />
-            <span className="hidden sm:inline">Raaziq</span>
+            <img src="/raaziq-logo.png" alt="Raaziq" width={161} height={133} className="h-9 w-auto" />
           </NavLink>
-          <nav className="flex items-center gap-1" aria-label="Primary">
+          <nav className="hidden items-center gap-1 sm:flex" aria-label="Primary">
             {NAV_LINKS.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
@@ -46,8 +46,8 @@ export function CustomerShell() {
                   )
                 }
               >
-                <Icon size={16} />
-                <span className="hidden sm:inline">{label}</span>
+                <Icon size={16} aria-hidden="true" />
+                <span>{label}</span>
               </NavLink>
             ))}
           </nav>
@@ -62,9 +62,17 @@ export function CustomerShell() {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto max-w-5xl px-4 py-6 pb-24 sm:px-6 sm:py-8">
         <Outlet />
       </main>
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid h-18 grid-cols-3 border-t border-border bg-card/98 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-sm sm:hidden" aria-label="Customer navigation">
+        {NAV_LINKS.map(({ to, label, icon: Icon }) => (
+          <NavLink key={to} to={to} className={({ isActive }) => cn("flex min-w-0 flex-col items-center justify-center gap-1 rounded-lg text-xs font-medium transition-colors duration-150", isActive ? "text-accent-foreground" : "text-muted-foreground")}>
+            <Icon size={21} weight="duotone" aria-hidden="true" />
+            <span>{label}</span>
+          </NavLink>
+        ))}
+      </nav>
     </div>
   )
 }

@@ -106,7 +106,7 @@ export function InvoicePage() {
         }
         description={`${inv.customer_name_snapshot} · ${inv.origin_snapshot} → ${inv.destination_snapshot} · Issued ${formatDate(inv.issued_date)}`}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
               className="gap-1.5"
@@ -128,6 +128,12 @@ export function InvoicePage() {
         }
       />
 
+      <section className="mb-6 grid gap-4 rounded-xl border border-border bg-card p-5 sm:grid-cols-[1.4fr_1fr_1fr]" aria-label="Invoice summary">
+        <div><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Amount due</p><p className="mt-1 font-heading text-3xl font-semibold tabular-nums">{formatMoney(inv.total, inv.currency)}</p></div>
+        <div><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Bill to</p><p className="mt-1 font-medium">{inv.customer_name_snapshot}</p><p className="text-sm text-muted-foreground">{inv.origin_snapshot} → {inv.destination_snapshot}</p></div>
+        <div><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Bill from</p><p className="mt-1 font-medium">{billingEntity ?? "Loading…"}</p><p className="text-sm text-muted-foreground">Issued {formatDate(inv.issued_date)}</p></div>
+      </section>
+
       {inv.status === "cancelled" && (
         <div className="mb-6 flex items-start gap-2.5 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
           <Prohibit size={18} weight="fill" className="mt-0.5 shrink-0" />
@@ -142,7 +148,7 @@ export function InvoicePage() {
         <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Charges</CardTitle>
+              <CardTitle className="text-base">Invoice charges</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">

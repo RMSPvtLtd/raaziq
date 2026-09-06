@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { CheckCircle } from "@phosphor-icons/react"
 import { PageHeader } from "@/components/shared/PageHeader"
@@ -21,6 +21,7 @@ import { useAsync } from "@/hooks/useAsync"
 import { useCustomerAuth } from "@/hooks/useCustomerAuth"
 import { ApiError, customerPortalApi } from "@/lib/api/client"
 import { formatDate, formatMoney } from "@/lib/format"
+import { effectiveQuoteStatus } from "@/lib/quote-comparison"
 
 const KIND_LABEL: Record<string, string> = {
   freight: "Freight",
@@ -39,10 +40,10 @@ const STATUS_LABEL: Record<string, string> = {
   rejected: "Rejected",
 }
 
-function AcceptQuoteCard({ quoteId, onAccepted }: { quoteId: number; onAccepted: () => void }) {
+function AcceptQuoteCard({ quoteId, carrier, amount, currency, defaultOpen, onAccepted }: { quoteId: number; carrier: string | null; amount: string; currency: string; defaultOpen: boolean; onAccepted: () => void }) {
   const { token } = useCustomerAuth()
   const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [accepting, setAccepting] = useState(false)
 
   async function handleAccept() {
@@ -73,10 +74,10 @@ function AcceptQuoteCard({ quoteId, onAccepted }: { quoteId: number; onAccepted:
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Accept this quote?</DialogTitle>
+              <DialogTitle>Accept {carrier ?? "this carrier"} for {formatMoney(amount, currency)}?</DialogTitle>
               <DialogDescription>
-                This opens your shipment job. If there are other carrier options for this inquiry, they'll no longer
-                be available once you accept this one.
+                This confirms the selected carrier and total, then opens your shipment job. Other carrier options
+                for this inquiry will no longer be available.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -84,7 +85,7 @@ function AcceptQuoteCard({ quoteId, onAccepted }: { quoteId: number; onAccepted:
                 Cancel
               </Button>
               <Button onClick={handleAccept} disabled={accepting}>
-                {accepting ? "Accepting…" : "Accept quote"}
+                {accepting ? "Accepting…" : `Accept ${formatMoney(amount, currency)}`}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -98,6 +99,7 @@ export function CustomerQuoteDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { token } = useCustomerAuth()
   const quoteId = Number(id)
+  const [searchParams] = useSearchParams()
 
   const quote = useAsync(() => customerPortalApi.quote(token!, quoteId), [token, quoteId])
 
@@ -105,7 +107,8 @@ export function CustomerQuoteDetailPage() {
   if (quote.error || !quote.data) return <ErrorState message={quote.error ?? "Quote not found."} onRetry={quote.reload} />
 
   const q = quote.data
-  const canAccept = q.is_current && (q.status === "draft" || q.status === "sent")
+  const status = effectiveQuoteStatus(q)
+  const canAccept = q.is_current && (status === "draft" || status === "sent")
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -113,7 +116,7 @@ export function CustomerQuoteDetailPage() {
         title={`Quote #${q.root_quote_id ?? q.id} Rev ${q.revision_number}`}
         description={
           <span className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{STATUS_LABEL[q.status]}</Badge>
+            <Badge variant="outline">{STATUS_LABEL[status]}</Badge>
             {q.carrier && <Badge variant="outline">{q.carrier}</Badge>}
             {!q.is_current && <Badge variant="secondary">Superseded</Badge>}
             <span>Valid until {formatDate(q.valid_until)}</span>
@@ -141,7 +144,7 @@ export function CustomerQuoteDetailPage() {
         </div>
       )}
 
-      {canAccept && <AcceptQuoteCard quoteId={q.id} onAccepted={quote.reload} />}
+      {canAccept && <AcceptQuoteCard quoteId={q.id} carrier={q.carrier} amount={q.total} currency={q.currency} defaultOpen={searchParams.get("accept") === "true"} onAccepted={quote.reload} />}
 
       <Card>
         <CardHeader>

@@ -28,6 +28,10 @@ export function StagesProvider({ children }: { children: ReactNode }) {
       .then((res) => {
         if (!cancelled) setStages(res.stages)
       })
+      .catch(() => {
+        // Consumers retain raw stage labels if metadata is temporarily unavailable.
+        if (!cancelled) setStages([])
+      })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })

@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { Plus, UserCircle } from "@phosphor-icons/react"
+import { MagnifyingGlass, Plus, UserCircle } from "@phosphor-icons/react"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { LoadingState, ErrorState } from "@/components/shared/States"
 import { Card, CardContent } from "@/components/ui/card"
@@ -21,14 +21,34 @@ import {
 import { useAsync } from "@/hooks/useAsync"
 import { useStages } from "@/hooks/useStages"
 import { areasApi, workersApi, ApiError } from "@/lib/api/client"
+import type { Area, Worker } from "@/lib/api/types"
 
 export function WorkersAdminPage() {
   const areas = useAsync(() => areasApi.list(), [])
   const workers = useAsync(() => workersApi.list(), [])
   const { groupFor } = useStages()
+  const [search, setSearch] = useState("")
 
   const loading = areas.loading || workers.loading
   const error = areas.error ?? workers.error
+  const rows = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase()
+    return (areas.data ?? []).flatMap<{ area: Area; worker: Worker | null }>((area) => {
+      const assigned = (workers.data ?? []).filter((worker) => worker.area.id === area.id)
+      const areaMatches = !term || [area.name, area.stage].some((value) => value.toLocaleLowerCase().includes(term))
+      const matches = areaMatches ? assigned : assigned.filter((worker) => [worker.name, worker.username].some((value) => value.toLocaleLowerCase().includes(term)))
+      return matches.length ? matches.map((worker) => ({ area, worker })) : areaMatches ? [{ area, worker: null }] : []
+    })
+  }, [areas.data, search, workers.data])
+  const mobileAreas = rows.reduce<{ area: Area; workers: Worker[] }[]>((groups, row) => {
+    let group = groups.at(-1)
+    if (group?.area.id !== row.area.id) {
+      group = { area: row.area, workers: [] }
+      groups.push(group)
+    }
+    if (row.worker) group.workers.push(row.worker)
+    return groups
+  }, [])
 
   return (
     <div>
@@ -43,18 +63,16 @@ export function WorkersAdminPage() {
       />
 
       {loading && <LoadingState rows={4} />}
-      {!loading && error && <ErrorState message={error} onRetry={workers.reload} />}
+      {!loading && error && <ErrorState message={error} onRetry={() => { areas.reload(); workers.reload() }} />}
 
       {!loading && !error && (
-        <div className="space-y-6">
-          {areas.data!.map((area, i) => {
-            const areaWorkers = workers.data!.filter((w) => w.area.id === area.id)
+        <><div className="relative mb-4"><MagnifyingGlass size={17} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search workers" placeholder="Search worker, username, area, or stage…" className="pl-9" /></div>
+        <div className="grid items-start gap-6 xl:grid-cols-2">
+          {mobileAreas.map(({ area, workers: areaWorkers }) => {
             const group = groupFor(area.stage)
-            const previousGroup = i > 0 ? groupFor(areas.data![i - 1].stage) : null
-            const showGroupHeader = group !== null && group !== previousGroup
             return (
               <div key={area.id}>
-                {showGroupHeader && (
+                {group && (
                   <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                     {group}
                   </p>
@@ -63,8 +81,8 @@ export function WorkersAdminPage() {
                   <CardContent className="py-4">
                     <div className="mb-3 flex items-center gap-2">
                       <h2 className="font-heading text-sm font-semibold text-foreground">{area.name}</h2>
-                      <Badge variant="outline" className="text-[11px]">
-                        {areaWorkers.length} worker{areaWorkers.length === 1 ? "" : "s"}
+                      <Badge variant="outline" className="ml-auto text-xs">
+                        {areaWorkers.filter((worker) => worker.is_active).length} active / {areaWorkers.length} total
                       </Badge>
                     </div>
                     {areaWorkers.length === 0 ? (
@@ -74,12 +92,13 @@ export function WorkersAdminPage() {
                         {areaWorkers.map((w) => (
                           <li
                             key={w.id}
-                            className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2 text-sm"
+                            className="flex flex-wrap items-center justify-between gap-3 border-t border-border py-3 text-sm"
                           >
-                            <span className="flex items-center gap-2">
+                            <span className="flex min-w-0 flex-wrap items-center gap-2">
                               <UserCircle size={18} className="text-muted-foreground" />
                               <span className="font-medium text-foreground">{w.name}</span>
                               <span className="text-muted-foreground">@{w.username}</span>
+                              <Badge variant={w.is_active ? "secondary" : "outline"}>{w.is_active ? "Active" : "Inactive"}</Badge>
                             </span>
                             <ToggleActiveButton
                               workerId={w.id}
@@ -95,7 +114,7 @@ export function WorkersAdminPage() {
               </div>
             )
           })}
-        </div>
+        </div></>
       )}
     </div>
   )
@@ -204,7 +223,7 @@ function CreateWorkerDialog({
           <div className="space-y-1.5">
             <Label>Area</Label>
             <Select value={areaId} onValueChange={setAreaId}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full" aria-label="Worker area">
                 <SelectValue placeholder="Select an area" />
               </SelectTrigger>
               <SelectContent>

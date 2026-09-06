@@ -52,6 +52,8 @@ export function CustomerInvoiceDetailPage() {
         }
       />
 
+      <div className="rounded-xl border border-border bg-card p-5"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Invoice total</p><p className="mt-1 font-heading text-3xl font-semibold tabular-nums">{formatMoney(inv.total, inv.currency)}</p><p className="mt-2 text-sm text-muted-foreground">{inv.origin} → {inv.destination}{inv.job_number ? ` · ${inv.job_number}` : ""}</p></div>
+
       {inv.status === "cancelled" && (
         <div className="rounded-xl border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
           This invoice has been cancelled and is no longer payable. Contact us if you have questions.

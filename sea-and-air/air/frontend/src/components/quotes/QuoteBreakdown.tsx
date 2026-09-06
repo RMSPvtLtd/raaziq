@@ -30,6 +30,7 @@ import { LoadingState, ErrorState } from "@/components/shared/States"
 import { useAsync } from "@/hooks/useAsync"
 import { companiesApi, downloadAuthedFile, inquiriesApi, invoicesApi, openAuthedFile, quotesApi, ApiError } from "@/lib/api/client"
 import { formatDate, formatMoney } from "@/lib/format"
+import { effectiveQuoteStatus } from "@/lib/quote-comparison"
 import type { Quote, QuoteStatus, Shipment } from "@/lib/api/types"
 
 const STATUS_LABEL: Record<QuoteStatus, string> = {
@@ -81,7 +82,7 @@ export function QuoteBreakdown({ quoteId }: { quoteId: number }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium text-foreground">
@@ -102,7 +103,8 @@ export function QuoteBreakdown({ quoteId }: { quoteId: number }) {
             </p>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button asChild variant="outline" size="sm"><Link to={`/inquiries/${q.inquiry_id}/quotes`}>Compare offers</Link></Button>
           <button
             type="button"
             onClick={() => openAuthedFile(quotesApi.pdfUrl(q.id)).catch(() => toast.error("Could not open PDF."))}
@@ -427,10 +429,12 @@ function ActionsBar({
   const [sending, setSending] = useState(false)
   const [accepting, setAccepting] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
+  const [acceptOpen, setAcceptOpen] = useState(false)
   const [revising, setRevising] = useState(false)
   const navigate = useNavigate()
 
-  const statusLabel = useMemo(() => STATUS_LABEL[quote.status], [quote.status])
+  const status = effectiveQuoteStatus(quote)
+  const statusLabel = STATUS_LABEL[status]
 
   async function handleGenerateRevision() {
     setRevising(true)
@@ -455,7 +459,7 @@ function ActionsBar({
     )
   }
 
-  if (quote.status === "expired") {
+  if (status === "expired") {
     return (
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
         <span>This quote expired on {formatDate(quote.valid_until)} and can no longer be sent or accepted.</span>
@@ -534,11 +538,23 @@ function ActionsBar({
           <XCircle size={16} />
           Reject
         </Button>
-        <Button onClick={handleAccept} disabled={accepting} className="gap-1.5">
+        <Button onClick={() => setAcceptOpen(true)} disabled={accepting} className="gap-1.5">
           <CheckCircle size={16} />
           {accepting ? "Opening job…" : "Open Job"}
         </Button>
       </div>
+      <Dialog open={acceptOpen} onOpenChange={(open) => { if (!accepting) setAcceptOpen(open) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Accept {quote.carrier ?? "this carrier"} for {formatMoney(quote.total, quote.currency)}?</DialogTitle>
+            <DialogDescription>This opens the shipment job and closes the other available carrier offers for this inquiry.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={accepting} onClick={() => setAcceptOpen(false)}>Cancel</Button>
+            <Button disabled={accepting} onClick={handleAccept}>{accepting ? "Opening job…" : "Accept quotation"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <RejectQuoteDialog
         quoteId={quote.id}
         open={rejectOpen}

@@ -55,7 +55,7 @@ export function WorkerQueuePage() {
             <p className="truncate text-sm font-medium text-foreground">{worker.name}</p>
             <p className="text-xs text-muted-foreground">{worker.area.name}</p>
           </div>
-          <Button variant="ghost" size="icon" aria-label="Sign out" onClick={handleLogout}>
+          <Button variant="ghost" size="icon" className="size-11" aria-label="Sign out" onClick={handleLogout}>
             <SignOut size={18} />
           </Button>
         </div>
@@ -64,15 +64,15 @@ export function WorkerQueuePage() {
       <main className="mx-auto max-w-2xl px-4 py-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="font-heading text-lg font-semibold text-foreground">Waiting for {worker.area.name}</h1>
-          <Button variant="ghost" size="icon" aria-label="Refresh" onClick={active.reload}>
+          <Button variant="ghost" size="icon" className="size-11" aria-label="Refresh" onClick={active.reload}>
             <ArrowClockwise size={18} />
           </Button>
         </div>
 
         <Tabs value={tab} onValueChange={handleTabChange} className="mb-3">
           <TabsList>
-            <TabsTrigger value="remaining">Remaining</TabsTrigger>
-            <TabsTrigger value="completed">Completed</TabsTrigger>
+            <TabsTrigger value="remaining">Remaining <span className="tabular-nums text-muted-foreground">{remaining.data?.length ?? 0}</span></TabsTrigger>
+            <TabsTrigger value="completed">Completed <span className="tabular-nums text-muted-foreground">{completed.data?.length ?? 0}</span></TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -130,7 +130,7 @@ export function WorkerQueuePage() {
           <div className="space-y-3">
             {tab === "remaining"
               ? visibleItems.map((item) => (
-                  <QueueItemCard key={item.id} item={item} token={token} onCompleted={remaining.reload} />
+                  <QueueItemCard key={item.id} item={item} token={token} onCompleted={() => { remaining.reload(); completed.reload() }} />
                 ))
               : visibleItems.map((item) => <CompletedItemCard key={item.id} item={item} />)}
           </div>
@@ -181,13 +181,24 @@ function QueueItemCard({
   const [note, setNote] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [done, setDone] = useState(false)
+  const [fileFeedback, setFileFeedback] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
 
   async function handleComplete() {
     setSubmitting(true)
     try {
       await workerPortalApi.complete(token, item.id, note.trim() || undefined)
+      setDone(true)
       toast.success(`${label} marked done`)
+      const card = cardRef.current
+      if (card && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        await card.animate(
+          [{ height: `${card.offsetHeight}px`, opacity: 1 }, { height: "0px", opacity: 0 }],
+          { delay: 120, duration: 180, easing: "ease-in", fill: "forwards" },
+        ).finished.catch(() => {})
+      }
       onCompleted()
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not mark this shipment done.")
@@ -199,18 +210,23 @@ function QueueItemCard({
   async function handleFileChosen(file: File | undefined) {
     if (!file) return
     if (file.type !== "application/pdf") {
+      setFileFeedback(`${file.name}: only PDF files are accepted.`)
       toast.error("Only PDF files can be attached.")
       return
     }
     if (file.size > MAX_UPLOAD_BYTES) {
+      setFileFeedback(`${file.name}: exceeds the 4 MB limit.`)
       toast.error(`File exceeds the ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB upload limit.`)
       return
     }
+    setFileFeedback(`${file.name} · ${(file.size / 1024).toFixed(0)} KB · uploading`)
     setUploading(true)
     try {
       await workerPortalApi.uploadDocument(token, item.id, file)
+      setFileFeedback(`${file.name} · ${(file.size / 1024).toFixed(0)} KB · attached`)
       toast.success("Document attached")
     } catch (err) {
+      setFileFeedback(`${file.name}: upload failed.`)
       toast.error(err instanceof ApiError ? err.message : "Could not attach document.")
     } finally {
       setUploading(false)
@@ -219,10 +235,11 @@ function QueueItemCard({
   }
 
   return (
-    <Card>
+    <div ref={cardRef} className="overflow-hidden">
+    <Card className={done ? "border-status-success bg-status-success/10" : undefined}>
       <CardContent className="space-y-3 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+          <div className="min-w-0 break-words">
             <p className="font-heading text-base font-semibold tabular-nums text-foreground">{label}</p>
             <p className="text-sm text-muted-foreground">
               {item.customer_name} · {item.origin} → {item.destination}
@@ -241,10 +258,11 @@ function QueueItemCard({
           onChange={(e) => setNote(e.target.value)}
           placeholder="Note (optional)"
           rows={2}
+          disabled={submitting || done}
           aria-label={`Note for ${label}`}
         />
 
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
             ref={fileInputRef}
             type="file"
@@ -254,19 +272,22 @@ function QueueItemCard({
           />
           <Button
             variant="outline"
-            className="gap-1.5"
-            disabled={uploading}
+            className="h-11 gap-1.5"
+            disabled={uploading || submitting || done}
             onClick={() => fileInputRef.current?.click()}
           >
             <UploadSimple size={18} />
             {uploading ? "Uploading…" : "Attach PDF"}
           </Button>
-          <Button onClick={handleComplete} disabled={submitting} className="flex-1 gap-1.5" size="lg">
+          <Button onClick={handleComplete} disabled={submitting || uploading || done} className="h-[52px] w-full gap-1.5 sm:flex-1" size="lg">
             <CheckCircle size={18} weight="fill" />
-            {submitting ? "Marking done…" : "Mark Done"}
+            {done ? "Done — task completed" : submitting ? "Marking done…" : "Mark Done"}
           </Button>
         </div>
+        {fileFeedback && <p className="text-xs text-muted-foreground" role="status">{fileFeedback}</p>}
+        {done && <p role="status" className="text-sm font-medium text-status-success">{label} completed successfully.</p>}
       </CardContent>
     </Card>
+    </div>
   )
 }

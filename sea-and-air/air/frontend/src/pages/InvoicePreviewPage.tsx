@@ -5,6 +5,7 @@ import { ArrowLeft, Plus, Receipt } from "@phosphor-icons/react"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { LoadingState, ErrorState } from "@/components/shared/States"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Label } from "@/components/ui/label"
@@ -138,11 +139,13 @@ export function InvoicePreviewPage() {
         }
       />
 
+      <div className="mb-5 flex flex-wrap gap-2 text-xs"><Badge variant="outline">Quote & shipment snapshot · read only</Badge><Badge variant="outline">Billing entity, remarks & references · supplied by ops</Badge></div>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Charges</CardTitle>
+              <CardTitle className="text-base">Quote charges · read only</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -197,13 +200,13 @@ export function InvoicePreviewPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Generate</CardTitle>
+              <CardTitle className="text-base">Ops-supplied invoice fields</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-1.5">
                 <Label>Bill from</Label>
                 <Select value={selectedCompanyId} onValueChange={setCompanyId}>
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="w-full" aria-label="Bill from company">
                     <SelectValue placeholder={companies.loading ? "Loading…" : "Select a company"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -218,6 +221,7 @@ export function InvoicePreviewPage() {
               <div className="space-y-1.5">
                 <Label>Remarks (optional)</Label>
                 <Textarea
+                  aria-label="Invoice remarks"
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   placeholder="Printed on the invoice itself"
@@ -227,6 +231,7 @@ export function InvoicePreviewPage() {
               <div className="space-y-1.5">
                 <Label>Status note (optional)</Label>
                 <Textarea
+                  aria-label="Shipment status note"
                   value={statusNote}
                   onChange={(e) => setStatusNote(e.target.value)}
                   placeholder="Recorded on the shipment's status history, not on the invoice"
@@ -242,7 +247,7 @@ export function InvoicePreviewPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">References</CardTitle>
+              <CardTitle className="text-base">Shipment references · supplied by ops</CardTitle>
               <p className="text-xs text-muted-foreground">
                 MB/L, HB/L, Form E, LC, Party Reference, Container -- not part of the quote, add any that apply
                 before generating.

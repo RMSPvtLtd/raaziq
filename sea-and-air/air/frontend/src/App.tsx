@@ -11,6 +11,7 @@ import { ProtectedOpsRoute } from "@/components/shared/ProtectedOpsRoute"
 import { ProtectedWorkerRoute } from "@/components/shared/ProtectedWorkerRoute"
 import { ProtectedCustomerRoute } from "@/components/shared/ProtectedCustomerRoute"
 import { OpsLoginPage } from "@/pages/OpsLoginPage"
+import { OverviewPage } from "@/pages/OverviewPage"
 import { ShipmentListPage } from "@/pages/ShipmentListPage"
 import { ShipmentDetailPage } from "@/pages/ShipmentDetailPage"
 import { InvoicePreviewPage } from "@/pages/InvoicePreviewPage"
@@ -25,6 +26,7 @@ import { CustomersAdminPage } from "@/pages/CustomersAdminPage"
 import { RateCardsAdminPage } from "@/pages/RateCardsAdminPage"
 import { AirlineSchedulesAdminPage } from "@/pages/AirlineSchedulesAdminPage"
 import { InquiryQuotesPage } from "@/pages/InquiryQuotesPage"
+import { QuotesLibraryPage } from "@/pages/QuotesLibraryPage"
 import { CustomerLoginPage } from "@/pages/CustomerLoginPage"
 import { CustomerShipmentsPage } from "@/pages/CustomerShipmentsPage"
 import { CustomerShipmentDetailPage } from "@/pages/CustomerShipmentDetailPage"
@@ -49,7 +51,7 @@ function App() {
   return (
     <StagesProvider>
       <Routes>
-        <Route path="/" element={<Navigate to="/shipments" replace />} />
+        <Route path="/" element={<Navigate to="/overview" replace />} />
 
         <Route element={<OpsAuthLayout />}>
           <Route path="/login" element={<OpsLoginPage />} />
@@ -60,9 +62,11 @@ function App() {
               </ProtectedOpsRoute>
             }
           >
+            <Route path="/overview" element={<OverviewPage />} />
             <Route path="/shipments" element={<ShipmentListPage />} />
             <Route path="/shipments/:id" element={<ShipmentDetailPage />} />
             <Route path="/shipments/:id/generate-invoice" element={<InvoicePreviewPage />} />
+            <Route path="/quotes" element={<QuotesLibraryPage />} />
             <Route path="/quotes/new" element={<QuoteFlowPage />} />
             <Route path="/inquiries/:id/quotes" element={<InquiryQuotesPage />} />
             <Route path="/quotes/:id" element={<QuoteFlowPage />} />

@@ -31,7 +31,7 @@ export function CustomerInvoicesPage() {
         <EmptyState icon={<FileText size={32} />} title="No invoices yet" description="Invoices we issue you will appear here." />
       )}
       {!invoices.loading && !invoices.error && (invoices.data?.length ?? 0) > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <><div className="hidden overflow-x-auto rounded-xl border border-border md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -65,7 +65,7 @@ export function CustomerInvoicesPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </div><ul className="space-y-2 md:hidden" aria-label="Invoices">{invoices.data!.map((invoice) => <li key={invoice.id} className="rounded-xl border border-border p-4"><div className="flex items-start justify-between gap-3"><Link to={`/customer/invoices/${invoice.id}`} className="font-medium tabular-nums hover:underline">{invoice.invoice_number}</Link><Badge variant={invoice.status === "cancelled" ? "secondary" : "outline"}>{STATUS_LABEL[invoice.status]}</Badge></div><div className="mt-3 flex items-end justify-between gap-3"><p className="text-xs text-muted-foreground">Issued {formatDate(invoice.issued_date)}</p><p className="font-heading font-semibold tabular-nums">{formatMoney(invoice.total, invoice.currency)}</p></div></li>)}</ul></>
       )}
     </div>
   )
