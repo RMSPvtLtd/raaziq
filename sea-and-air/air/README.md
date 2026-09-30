@@ -13,6 +13,66 @@ self-contained project with its own `pyproject.toml`, `uv.lock`, migrations, and
 It doesn't depend on anything in `../sea` (not built yet) or `../shared` (empty until
 something is genuinely duplicated between the two verticals).
 
+## Daily commercial workflow
+
+Back up the target database, then run `uv run alembic upgrade head` from this
+directory before starting the updated backend. Existing pricing percentages,
+incoterm charge rules, permissions and the 17-stage shipment workflow remain in
+place. Historical invoice snapshots are not rewritten by these migrations.
+
+- **Rate Cards:** use **COPY FOR TODAY**, enter the day's prices, then save. The
+  latest effective card per airline wins; issued quotes retain their prices.
+  Generated quote validity cannot exceed the source rate's expiry.
+- **Airline Schedules:** maintain weekly days, flight/routing, departure time
+  (origin local time), transit notes and validity. Quotes capture a reference
+  snapshot; this is not a live booking or capacity feed.
+- **Quotes:** filter by destination, compare airlines, add clauses and select an
+  offer. Air lanes use standard three-letter airport codes (LHE, DXB, LHR).
+- **Invoices:** the chosen quote's commercial details, clauses and schedule
+  reference are copied with the itemized charge headings. Supplier and internal
+  pricing audit details remain restricted to operations users.
+
+### Gmail delivery
+
+Configure `SMTP_USERNAME` and `SMTP_PASSWORD` (a Gmail app password, requiring
+2-Step Verification), with `SMTP_HOST=smtp.gmail.com` and `SMTP_PORT=587` in the
+backend environment. Keep credentials out of Git. Restart the backend after
+changing these values. [Google's app-password instructions](https://support.google.com/mail/answer/185833).
+
+Expand **AUTOMATIC QUOTATION & INVOICE EMAIL** on the quotations or invoices page to change each
+issuing company's recipient and automatic-delivery switch. The recipient order
+is company setting, `NOTIFICATION_EMAIL`, then the document customer's email.
+Publishing a quotation and creating an invoice trigger automatic PDF delivery.
+Draft creation and sample seeding do not send mail. A failed send leaves the
+document saved, records the failure, and allows an explicit retry. This is
+synchronous provider submission, not a queued delivery/receipt guarantee.
+Existing Resend configuration remains supported when SMTP is absent.
+
+### Safe sample data
+
+For a development database, run `uv run python database/seeds/seed.py`. The seed
+refuses production mode and can be rerun. It adds clearly labelled fictional
+daily EMIRATES, TURKISH AIRLINES and QATAR AIRWAYS offers for LHE–DXB and LHE–LHR,
+weekly reference schedules, customer comparisons and a non-payable invoice.
+Run again on a new day for fresh daily examples; past offers remain unchanged.
+No private `Real-Samples` files are imported or committed, and no mail is sent.
+
+### Production database setup
+
+Provision a persistent PostgreSQL database before deploying the air backend to
+Vercel. Set `ENVIRONMENT=production`, `DATABASE_URL`, `JWT_SECRET_KEY` (at least
+32 characters), `OPS_ADMIN_USERNAME`, `OPS_ADMIN_PASSWORD`, `CORS_ORIGINS`, and
+the email settings in the backend environment. With those same settings locally,
+run `uv run alembic upgrade head`, then
+`uv run python database/seeds/bootstrap_production.py` once. The bootstrap is
+idempotent and creates only the first operator and the default issuing company;
+it does not publish demo rates or credentials. Change the bootstrap password
+after the first login. Deploy the sea backend and frontend as their separate
+Vercel projects, and point the frontend API rewrites at the deployed backends.
+
+Development customer portal: `/customer/login`, user `demo.customer`, password
+`Customer123!`. Demo credentials and rates must not be used for real operations.
+
 ## Stack
 
 **Backend:** Python, FastAPI, SQLAlchemy 2.x (ORM), Alembic, Pydantic, PostgreSQL

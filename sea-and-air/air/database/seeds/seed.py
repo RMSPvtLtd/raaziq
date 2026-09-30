@@ -176,7 +176,7 @@ def _seed_rate_card(session: Session) -> m.RateCard:
     rate_card, created = _get_or_create(
         session,
         m.RateCard,
-        {"origin": "Lahore", "destination": "Dubai", "mode": TransportMode.AIR, "carrier": "PIA Cargo"},
+        {"origin": "LHE", "destination": "DXB", "mode": TransportMode.AIR, "carrier": "PIA Cargo"},
         {
             "currency": "USD",
             "valid_from": date(2020, 1, 1),
@@ -219,7 +219,7 @@ def _seed_inquiry(
         return existing
 
     payload = InquiryCreate(
-        customer_id=customer.id, origin="Lahore", destination="Dubai", mode=TransportMode.AIR,
+        customer_id=customer.id, origin="LHE", destination="DXB", mode=TransportMode.AIR,
         cargo_type=cargo_type, weight_kg=weight_kg, volume_cbm=volume_cbm,
         ready_date=SEED_TODAY, incoterm=incoterm, description=description, **extra,
     )
@@ -256,6 +256,8 @@ def _walk_to(session: Session, shipment: m.Shipment, target: ShipmentStage, acto
 
 
 def run(session: Session) -> None:
+    if get_settings().is_production:
+        raise RuntimeError("Demo records cannot be seeded in production")
     _seed_ops_user(session)
     _seed_companies(session)
     _seed_rate_card(session)
@@ -271,8 +273,10 @@ def run(session: Session) -> None:
     # Orient Traders and Zainab Enterprises are the "significant volume"
     # clients who get a portal login -- one with an active shipment, one
     # with a completed one, so both dashboard states are demoable.
-    grant_portal_access(session, orient, username="orient.traders", password=DEMO_CUSTOMER_PASSWORD)
-    grant_portal_access(session, zainab, username="zainab.enterprises", password=DEMO_CUSTOMER_PASSWORD)
+    if not orient.username:
+        grant_portal_access(session, orient, username="orient.traders", password=DEMO_CUSTOMER_PASSWORD)
+    if not zainab.username:
+        grant_portal_access(session, zainab, username="zainab.enterprises", password=DEMO_CUSTOMER_PASSWORD)
 
     inq_draft = _seed_inquiry(session, customer=bilal, cargo_type="Garments", weight_kg=Decimal("120"), volume_cbm=Decimal("0.6"), incoterm="DAP", tag="draft-quote")
     inq_mid = _seed_inquiry(session, customer=orient, cargo_type="Electronics components", weight_kg=Decimal("340"), volume_cbm=Decimal("1.8"), incoterm="FOB", tag="mid-airport")
@@ -329,6 +333,81 @@ def run(session: Session) -> None:
         default_company = next(c for c in list_companies(session) if c.is_default)
         create_invoice_from_quote(session, quote_delivered.id, company_id=default_company.id, today=SEED_TODAY)
         session.flush()
+
+    _seed_commercial_samples(session, actor_by_stage)
+
+
+def _seed_commercial_samples(session: Session, actors: dict) -> None:
+    """Fictional, labelled examples of the supplied commercial document formats.
+
+    Use only in development. No carrier contracts or customer sample records
+    are imported, and the service calls here never deliver email.
+    """
+    from services.airline_schedules import create_airline_schedule
+    from schemas.airline_schedules import AirlineScheduleCreate
+    from services.quotes import generate_quotes, set_quote_clauses
+
+    today = date.today()
+    terms = ("DEMO ONLY - NOT A CARRIER OFFER OR BOOKING.\n"
+             "RATES VALID FOR THE STATED DATE ONLY.\n"
+             "SPACE AND FLIGHT PLANNING SUBJECT TO AIRLINE CONFIRMATION.\n"
+             "CARRIER SURCHARGES MAY CHANGE BEFORE BOOKING.\n"
+             "STORAGE AND DESTINATION CHARGES APPLY ONLY AS ITEMIZED.")
+    customer = _seed_customer(session, name="DEMO CUSTOMER", company_name="DEMO LOGISTICS CLIENT",
+                              email="demo.customer@example.com", phone="DEMO")
+    if not customer.username:
+        grant_portal_access(session, customer, username="demo.customer", password=DEMO_CUSTOMER_PASSWORD)
+    for destination in ("DXB", "LHR"):
+        for carrier, rate, hub, days in (
+            ("EMIRATES", "5.00", "DXB", ["mon", "wed", "fri"]),
+            ("TURKISH AIRLINES", "4.75", "IST", ["tue", "thu", "sat"]),
+            ("QATAR AIRWAYS", "4.50", "DOH", ["mon", "thu", "sun"]),
+        ):
+            card, created = _get_or_create(session, m.RateCard,
+                {"origin": "LHE", "destination": destination, "carrier": carrier,
+                 "mode": TransportMode.AIR, "valid_from": today, "valid_until": today},
+                {"currency": "USD", "minimum_charge": Decimal("50")})
+            if created:
+                card.breaks.append(m.RateCardBreak(min_weight=Decimal("0"), unit=UnitOfMeasure.PER_KG,
+                    rate=Decimal(rate), description="DEMO AIR FREIGHT - NOT A LIVE RATE"))
+                for kind, label, amount in ((ChargeKind.DOCUMENTATION, "AWB & DOCUMENTATION", "25"),
+                                           (ChargeKind.HANDLING, "TERMINAL HANDLING", "20"),
+                                           (ChargeKind.CUSTOMS, "CUSTOMS CLEARANCE", "30")):
+                    card.charges.append(m.RateCardCharge(kind=kind, description=f"DEMO {label}",
+                        basis=ChargeBasis.FLAT, amount=Decimal(amount)))
+            schedule = session.execute(select(m.AirlineSchedule).where(
+                m.AirlineSchedule.airline_name == carrier, m.AirlineSchedule.origin == "LHE",
+                m.AirlineSchedule.destination == destination,
+                m.AirlineSchedule.notes == "DEMO WEEKLY REFERENCE - CONFIRM ACTUAL CAPACITY WITH AIRLINE",
+            )).scalars().first()
+            if schedule is None:
+                create_airline_schedule(session, AirlineScheduleCreate(
+                    airline_name=carrier, origin="LHE", destination=destination, mode=TransportMode.AIR,
+                    days_of_week=days, routing="-".join(dict.fromkeys(["LHE", hub, destination])),
+                    departure_time="12:50", transit_time="DEMO - SUBJECT TO CONNECTION",
+                    notes="DEMO WEEKLY REFERENCE - CONFIRM ACTUAL CAPACITY WITH AIRLINE"))
+        for purpose in (["CHOICE", "INVOICE"] if destination == "DXB" else ["CHOICE"]):
+            tag = f"[DEMO:{purpose}:{destination}:{today}]"
+            inquiry = session.execute(select(m.Inquiry).where(m.Inquiry.description == tag)).scalars().first()
+            if inquiry is not None:
+                continue
+            inquiry = create_inquiry(session, InquiryCreate(customer_id=customer.id, origin="LHE",
+                destination=destination, mode=TransportMode.AIR, cargo_type="DEMO TEXTILE CARGO",
+                weight_kg=Decimal("2500"), volume_cbm=Decimal("10"), dimensions="100 X 100 X 100 CM X 10",
+                pieces=10, ready_date=today, incoterm="DAP", description=tag))
+            quotes = generate_quotes(session, inquiry.id, today=today)
+            for quote in quotes:
+                set_quote_clauses(session, quote.id, clauses=terms, today=today)
+            if purpose == "INVOICE":
+                chosen = next(q for q in quotes if q.carrier == "EMIRATES")
+                shipment = accept_quote(session, chosen.id, "demo", today=today)
+                _walk_to(session, shipment, ShipmentStage.ARRIVAL, actors)
+                company = next(c for c in list_companies(session) if c.is_default)
+                create_invoice_from_quote(session, chosen.id, company_id=company.id, today=today,
+                                          remarks="DEMO INVOICE - NOT PAYABLE")
+                advance_stage(session, shipment, ShipmentStage.INVOICE_TO_CUSTOMER, actor="demo",
+                              note="Demo invoice created; no email delivered.", source=EventSource.MANUAL)
+    session.flush()
 
 
 def main() -> None:

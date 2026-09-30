@@ -1,4 +1,6 @@
-from sqlalchemy import String, Text
+from datetime import date
+
+from sqlalchemy import Date, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db import Base
@@ -9,9 +11,8 @@ from models.enums import TransportMode
 
 class AirlineSchedule(TimestampMixin, Base):
     """A reference-only record of which days of the week an airline flies a
-    given lane. Ops-facing information only -- nothing in the pricing or
-    quoting engine reads this table; it exists purely so ops can look up
-    "does PIA fly LHE->LHR on a Wednesday" while planning a shipment.
+    given lane. Effective records are copied onto quotes for reference;
+    they do not represent confirmed bookings or live airline availability.
     """
 
     __tablename__ = "airline_schedule"
@@ -27,3 +28,10 @@ class AirlineSchedule(TimestampMixin, Base):
     # relying on a native array/JSON column type.
     days_of_week: Mapped[str] = mapped_column(Text, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
+    flight_number: Mapped[str | None] = mapped_column(String(40))
+    routing: Mapped[str | None] = mapped_column(String(200))
+    # HH:MM in the origin's local time, as entered by operations.
+    departure_time: Mapped[str | None] = mapped_column(String(5))
+    transit_time: Mapped[str | None] = mapped_column(String(120))
+    valid_from: Mapped[date | None] = mapped_column(Date)
+    valid_until: Mapped[date | None] = mapped_column(Date)

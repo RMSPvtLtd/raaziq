@@ -1,9 +1,10 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from models.enums import TransportMode
+from utils.locations import validate_location
 
 
 class InquiryCreate(BaseModel):
@@ -24,6 +25,13 @@ class InquiryCreate(BaseModel):
     pieces: int | None = Field(default=None, gt=0)
     supplier_name: str | None = Field(default=None, max_length=200)
     supplier_address: str | None = None
+
+    @model_validator(mode="after")
+    def normalize_route(self) -> "InquiryCreate":
+        self.origin = validate_location(self.origin, self.mode)
+        self.destination = validate_location(self.destination, self.mode)
+        self.incoterm = self.incoterm.strip().upper()
+        return self
 
 
 class InquiryRead(BaseModel):

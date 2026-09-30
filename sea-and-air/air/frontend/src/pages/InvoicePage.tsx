@@ -1,4 +1,8 @@
-import { Fragment, useState } from "react"
+import { EmailStatus } from "@/components/shared/EmailSettings"
+import { CommercialCharges } from "@/components/shared/CommercialCharges"
+import { CommercialDetails } from "@/components/shared/CommercialDetails"
+import { ScheduleReference } from "@/components/shared/ScheduleReference"
+import { useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import { ArrowLeft, DownloadSimple, PaperPlaneTilt, Prohibit } from "@phosphor-icons/react"
@@ -7,7 +11,6 @@ import { LoadingState, ErrorState } from "@/components/shared/States"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -22,33 +25,8 @@ import {
 import { useAsync } from "@/hooks/useAsync"
 import { ApiError, companiesApi, downloadAuthedFile, invoicesApi } from "@/lib/api/client"
 import { formatDate, formatMoney } from "@/lib/format"
-import type { ChargeKind, Invoice, InvoiceStatus } from "@/lib/api/types"
+import type { InvoiceStatus } from "@/lib/api/types"
 
-const KIND_LABEL: Record<string, string> = {
-  freight: "Freight",
-  documentation: "Documentation",
-  customs: "Customs",
-  pickup: "Pickup",
-  handling: "Handling",
-  other: "Other",
-}
-
-// Fixed display order so the charges table always reads Freight ->
-// Documentation -> Customs -> Pickup -> Handling -> Other, regardless of
-// the order line items were actually created in.
-const KIND_ORDER: ChargeKind[] = ["freight", "documentation", "customs", "pickup", "handling", "other"]
-
-function groupLineItemsByKind(lineItems: Invoice["line_items"]) {
-  const present = KIND_ORDER.filter((k) => lineItems.some((li) => li.kind === k))
-  for (const li of lineItems) {
-    if (!present.includes(li.kind)) present.push(li.kind)
-  }
-  return present.map((kind) => {
-    const items = lineItems.filter((li) => li.kind === kind)
-    const subtotal = items.reduce((sum, li) => sum + Number(li.amount), 0)
-    return { kind, items, subtotal }
-  })
-}
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = { draft: "Draft", issued: "Issued", paid: "Paid", cancelled: "Cancelled" }
 
@@ -81,17 +59,19 @@ export function InvoicePage() {
   async function handleEmail() {
     setEmailing(true)
     try {
-      await invoicesApi.email(inv.id)
-      toast.success(`Invoice emailed to ${inv.customer_name_snapshot}`)
+      const result = await invoicesApi.email(inv.id)
+      if (result.sent) toast.success(`Invoice emailed to ${result.recipient}`)
+      else toast.error(result.error ?? "Invoice saved; email was not sent")
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not send email.")
     } finally {
       setEmailing(false)
+      invoice.reload()
     }
   }
 
   return (
-    <div>
+    <div className="uppercase">
       <Button variant="ghost" size="sm" className="mb-3 -ml-2 gap-1.5 text-muted-foreground" onClick={() => navigate("/invoices")}>
         <ArrowLeft size={16} />
         All invoices
@@ -128,6 +108,9 @@ export function InvoicePage() {
         }
       />
 
+      <EmailStatus record={inv} />
+      <CommercialDetails rows={[["QUOTE", inv.quote_reference_snapshot], ["QUOTE DATE", inv.quote_date_snapshot], ["QUOTE VALID UNTIL", inv.quote_valid_until_snapshot], ["VOLUME (CBM)", inv.volume_cbm_snapshot], ["DIMENSIONS", inv.dimensions_snapshot], ["READY DATE", inv.ready_date_snapshot], ["DESCRIPTION", inv.description_snapshot]]} />
+      <div className="my-6"><ScheduleReference schedules={inv.schedule_snapshot} /></div>
       <section className="mb-6 grid gap-4 rounded-xl border border-border bg-card p-5 sm:grid-cols-[1.4fr_1fr_1fr]" aria-label="Invoice summary">
         <div><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Amount due</p><p className="mt-1 font-heading text-3xl font-semibold tabular-nums">{formatMoney(inv.total, inv.currency)}</p></div>
         <div><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Bill to</p><p className="mt-1 font-medium">{inv.customer_name_snapshot}</p><p className="text-sm text-muted-foreground">{inv.origin_snapshot} → {inv.destination_snapshot}</p></div>
@@ -151,43 +134,7 @@ export function InvoicePage() {
               <CardTitle className="text-base">Invoice charges</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {groupLineItemsByKind(inv.line_items).map((group) => (
-                      <Fragment key={group.kind}>
-                        <TableRow className="bg-muted/50 hover:bg-muted/50">
-                          <TableCell colSpan={2} className="py-1.5 text-xs font-semibold uppercase text-muted-foreground">
-                            {KIND_LABEL[group.kind] ?? group.kind} Charges
-                          </TableCell>
-                        </TableRow>
-                        {group.items.map((li) => (
-                          <TableRow key={li.id}>
-                            <TableCell className="pl-6 text-sm">{li.description}</TableCell>
-                            <TableCell className="text-right tabular-nums">{formatMoney(li.amount, inv.currency)}</TableCell>
-                          </TableRow>
-                        ))}
-                        {group.items.length > 1 && (
-                          <TableRow className="border-none">
-                            <TableCell className="pl-6 text-xs italic text-muted-foreground">
-                              {KIND_LABEL[group.kind] ?? group.kind} Subtotal
-                            </TableCell>
-                            <TableCell className="text-right text-xs italic tabular-nums text-muted-foreground">
-                              {formatMoney(String(group.subtotal), inv.currency)}
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </Fragment>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <CommercialCharges items={inv.line_items} currency={inv.currency} />
               <div className="mt-4 space-y-1.5 border-t border-border pt-4 text-sm">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span>

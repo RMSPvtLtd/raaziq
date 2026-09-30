@@ -3,6 +3,8 @@ import { toast } from "sonner"
 import { CalendarBlank, DotsThree, MagnifyingGlass, Plus, Trash } from "@phosphor-icons/react"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { AirlineInput } from "@/components/shared/AirlineInput"
+import { CargoSources } from "@/components/shared/CargoSources"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { LoadingState, ErrorState, EmptyState } from "@/components/shared/States"
 import { Card, CardContent } from "@/components/ui/card"
@@ -49,6 +51,8 @@ function toInput(s: AirlineSchedule): AirlineScheduleInput {
     mode: s.mode,
     days_of_week: s.days_of_week,
     notes: s.notes,
+    flight_number: s.flight_number, routing: s.routing, departure_time: s.departure_time,
+    transit_time: s.transit_time, valid_from: s.valid_from, valid_until: s.valid_until,
   }
 }
 
@@ -63,12 +67,13 @@ export function AirlineSchedulesAdminPage() {
   const visible = useMemo(() => filterSchedules(schedules.data ?? [], { search, day, lane, carrier }), [day, lane, carrier, schedules.data, search])
 
   return (
-    <div>
+    <div className="uppercase">
       <PageHeader
         title="Flight Schedule"
-        description="Weekly lane reference for ops planning. It does not confirm availability or affect quoting and pricing."
+        description="Weekly lane reference for ops planning. Saved with matching quotes; subject to availability, not a confirmed booking."
         action={<ScheduleFormDialog onSaved={schedules.reload} />}
       />
+      <CargoSources context="schedule" />
 
       {schedules.loading && <LoadingState rows={3} />}
       {!schedules.loading && schedules.error && <ErrorState message={schedules.error} onRetry={schedules.reload} />}
@@ -100,7 +105,7 @@ function ScheduleRecords({ schedules, onChanged }: { schedules: AirlineSchedule[
     <div className="hidden max-h-[min(62vh,46rem)] overflow-auto rounded-xl border border-border lg:block">
       <table className="w-full text-sm">
         <thead className="sticky top-0 z-10 bg-background shadow-[0_1px_0_hsl(var(--border))]"><tr><th className="h-10 px-3 text-left font-medium">Airline</th><th className="px-3 text-left font-medium">Lane</th><th className="px-3 text-left font-medium">Mode</th>{DAYS.map((item) => <th key={item.value} className="px-2 text-center font-medium">{item.label}</th>)}<th className="px-3 text-left font-medium">Notes</th><th className="px-3 text-right font-medium">Actions</th></tr></thead>
-        <tbody>{schedules.map((schedule) => <tr key={schedule.id} className="border-t border-border hover:bg-muted/40"><td className="p-3 font-medium">{schedule.airline_name}</td><td className="p-3 whitespace-nowrap">{schedule.origin} → {schedule.destination}</td><td className="p-3"><Badge variant="outline" className="text-[10px] uppercase">{schedule.mode}</Badge></td>{DAYS.map((item) => <td key={item.value} className="p-2 text-center" aria-label={`${item.label}: ${schedule.days_of_week.includes(item.value) ? "operates" : "does not operate"}`}><span aria-hidden="true" className={cn("inline-block size-2 rounded-full", schedule.days_of_week.includes(item.value) ? "bg-primary" : "bg-muted-foreground/20")} /></td>)}<td className="max-w-56 truncate p-3 text-muted-foreground" title={schedule.notes ?? undefined}>{schedule.notes || "—"}</td><td className="p-3"><ScheduleActions schedule={schedule} onChanged={onChanged} /></td></tr>)}</tbody>
+        <tbody>{schedules.map((schedule) => <tr key={schedule.id} className="border-t border-border hover:bg-muted/40"><td className="p-3 font-medium">{schedule.airline_name}<ScheduleDetails schedule={schedule} /></td><td className="p-3 whitespace-nowrap">{schedule.origin} → {schedule.destination}</td><td className="p-3"><Badge variant="outline" className="text-[10px] uppercase">{schedule.mode}</Badge></td>{DAYS.map((item) => <td key={item.value} className="p-2 text-center" aria-label={`${item.label}: ${schedule.days_of_week.includes(item.value) ? "operates" : "does not operate"}`}><span aria-hidden="true" className={cn("inline-block size-2 rounded-full", schedule.days_of_week.includes(item.value) ? "bg-primary" : "bg-muted-foreground/20")} /></td>)}<td className="max-w-56 truncate p-3 text-muted-foreground" title={schedule.notes ?? undefined}>{schedule.notes || "—"}</td><td className="p-3"><ScheduleActions schedule={schedule} onChanged={onChanged} /></td></tr>)}</tbody>
       </table>
     </div>
     <div className="space-y-3 lg:hidden">{schedules.map((schedule) => <ScheduleRow key={schedule.id} schedule={schedule} onChanged={onChanged} />)}</div>
@@ -164,6 +169,7 @@ function ScheduleRow({ schedule, onChanged }: { schedule: AirlineSchedule; onCha
           ))}
         </div>
 
+        <ScheduleDetails schedule={schedule} />
         {schedule.notes && <p className="text-sm text-muted-foreground">{schedule.notes}</p>}
       </CardContent>
     </Card>
@@ -189,7 +195,7 @@ function ScheduleFormDialog({ schedule, onSaved }: { schedule?: AirlineSchedule;
     }))
   }
 
-  const valid = form.airline_name.trim() && form.origin.trim() && form.destination.trim() && form.days_of_week.length > 0
+  const valid = form.airline_name.trim() && form.origin.trim() && form.destination.trim() && form.days_of_week.length > 0 && (form.mode !== "air" || (/^[A-Z]{3}$/.test(form.origin) && /^[A-Z]{3}$/.test(form.destination))) && (!form.valid_from || !form.valid_until || form.valid_until >= form.valid_from)
 
   async function handleSubmit() {
     if (!valid) return
@@ -238,7 +244,7 @@ function ScheduleFormDialog({ schedule, onSaved }: { schedule?: AirlineSchedule;
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] sm:max-w-3xl! overflow-y-auto">
+      <DialogContent className="max-h-[90vh] sm:max-w-3xl! overflow-y-auto uppercase">
         <DialogHeader>
           <DialogTitle>{editing ? "Edit flight schedule" : "New flight schedule"}</DialogTitle>
         </DialogHeader>
@@ -247,24 +253,24 @@ function ScheduleFormDialog({ schedule, onSaved }: { schedule?: AirlineSchedule;
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="schedule-airline">Airline</Label>
-              <Input
+              <AirlineInput
                 id="schedule-airline"
                 value={form.airline_name}
-                onChange={(e) => setForm((f) => ({ ...f, airline_name: e.target.value }))}
-                placeholder="e.g. PIA Cargo"
+                onChange={(e) => setForm((f) => ({ ...f, airline_name: e.target.value.toUpperCase() }))}
+                placeholder="EMIRATES"
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="schedule-origin">Origin</Label>
-              <Input id="schedule-origin" value={form.origin} onChange={(e) => setForm((f) => ({ ...f, origin: e.target.value }))} placeholder="e.g. Lahore" />
+              <Input id="schedule-origin" value={form.origin} onChange={(e) => setForm((f) => ({ ...f, origin: e.target.value.toUpperCase() }))} placeholder="LHE" maxLength={form.mode === "air" ? 3 : undefined} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="schedule-destination">Destination</Label>
               <Input
                 id="schedule-destination"
                 value={form.destination}
-                onChange={(e) => setForm((f) => ({ ...f, destination: e.target.value }))}
-                placeholder="e.g. London"
+                onChange={(e) => setForm((f) => ({ ...f, destination: e.target.value.toUpperCase() }))}
+                placeholder="DXB / LHR" maxLength={form.mode === "air" ? 3 : undefined}
               />
             </div>
             <div className="space-y-1.5">
@@ -282,6 +288,10 @@ function ScheduleFormDialog({ schedule, onSaved }: { schedule?: AirlineSchedule;
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {([['flight_number', 'FLIGHT NUMBER', 'text', 40], ['routing', 'ROUTING (AIRPORT CODES)', 'text', 200], ['departure_time', 'DEPARTURE (ORIGIN LOCAL TIME)', 'time', undefined], ['transit_time', 'TRANSIT TIME', 'text', 120], ['valid_from', 'VALID FROM', 'date', undefined], ['valid_until', 'VALID UNTIL', 'date', undefined]] as const).map(([key, label, type, maxLength]) => <div key={key} className="space-y-1.5"><Label htmlFor={"schedule-" + key}>{label}</Label><Input id={"schedule-" + key} type={type} maxLength={maxLength} value={form[key] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value.toUpperCase() || null }))} /></div>)}
           </div>
 
           <div className="space-y-1.5">
@@ -332,4 +342,8 @@ function ScheduleFormDialog({ schedule, onSaved }: { schedule?: AirlineSchedule;
       </DialogContent>
     </Dialog>
   )
+}
+
+function ScheduleDetails({ schedule: s }: { schedule: AirlineSchedule }) {
+  return <div className="mt-1 space-y-0.5 text-xs font-normal text-muted-foreground">{(s.flight_number || s.departure_time) && <p>{s.flight_number}{s.departure_time ? " · " + s.departure_time + " LOCAL" : ""}</p>}{s.routing && <p>{s.routing}</p>}{s.transit_time && <p>TRANSIT: {s.transit_time}</p>}{(s.valid_from || s.valid_until) && <p>{s.valid_from ?? "OPEN"} – {s.valid_until ?? "OPEN"}</p>}</div>
 }

@@ -1,3 +1,6 @@
+import { CommercialCharges } from "@/components/shared/CommercialCharges"
+import { CommercialDetails } from "@/components/shared/CommercialDetails"
+import { ScheduleReference } from "@/components/shared/ScheduleReference"
 import { useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -7,7 +10,6 @@ import { LoadingState, ErrorState } from "@/components/shared/States"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -17,14 +19,6 @@ import { ApiError, companiesApi, customersApi, inquiriesApi, invoicesApi, quotes
 import { formatMoney } from "@/lib/format"
 import type { ReferenceType } from "@/lib/api/types"
 
-const KIND_LABEL: Record<string, string> = {
-  freight: "Freight",
-  documentation: "Documentation",
-  customs: "Customs",
-  pickup: "Pickup",
-  handling: "Handling",
-  other: "Other",
-}
 
 const REFERENCE_TYPES: ReferenceType[] = ["MAWB", "HAWB", "MBL", "HBL", "CONTAINER", "FORM_E", "LC", "PARTY_REFERENCE"]
 
@@ -96,8 +90,10 @@ export function InvoicePreviewPage() {
         undefined,
         remarks.trim() || undefined,
       )
-      await shipmentsApi.invoice(shipmentId, statusNote.trim() || undefined)
+      try { await shipmentsApi.invoice(shipmentId, statusNote.trim() || undefined) }
+      catch { toast.warning("Invoice saved; shipment stage could not be updated. Review the shipment.") }
       toast.success("Invoice generated")
+      if (invoice.email_status !== "sent") toast.info(invoice.email_error ?? `Email: ${invoice.email_status}`)
       navigate(`/invoices/${invoice.id}`)
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not generate the invoice.")
@@ -121,7 +117,7 @@ export function InvoicePreviewPage() {
   }
 
   return (
-    <div>
+    <div className="uppercase">
       <Button
         variant="ghost"
         size="sm"
@@ -148,27 +144,7 @@ export function InvoicePreviewPage() {
               <CardTitle className="text-base">Quote charges · read only</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {q.line_items.map((li) => (
-                      <TableRow key={li.id}>
-                        <TableCell>
-                          <span>{KIND_LABEL[li.kind] ?? li.kind}</span>
-                          <p className="text-xs text-muted-foreground">{li.description}</p>
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">{formatMoney(li.final_total, q.currency)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <CommercialCharges items={q.line_items} currency={q.currency} />
               <div className="mt-4 space-y-1.5 border-t border-border pt-4 text-sm">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span>
@@ -198,6 +174,8 @@ export function InvoicePreviewPage() {
             </CardContent>
           </Card>
 
+          <ScheduleReference schedules={q.schedule_snapshot} />
+          <CommercialDetails rows={[["QUOTE VALID UNTIL", q.valid_until], ["DIMENSIONS", inq?.dimensions], ["READY DATE", inq?.ready_date], ["VOLUME (CBM)", inq?.volume_cbm], ["DESCRIPTION", inq?.description]]} clauses={q.clauses} />
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Ops-supplied invoice fields</CardTitle>

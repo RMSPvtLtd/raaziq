@@ -1,23 +1,17 @@
+import { CommercialCharges } from "@/components/shared/CommercialCharges"
+import { CommercialDetails } from "@/components/shared/CommercialDetails"
+import { ScheduleReference } from "@/components/shared/ScheduleReference"
 import { useParams } from "react-router-dom"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { LoadingState, ErrorState } from "@/components/shared/States"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAsync } from "@/hooks/useAsync"
 import { useCustomerAuth } from "@/hooks/useCustomerAuth"
 import { customerPortalApi } from "@/lib/api/client"
 import { formatDate, formatMoney } from "@/lib/format"
 import type { InvoiceStatus } from "@/lib/api/types"
 
-const KIND_LABEL: Record<string, string> = {
-  freight: "Freight",
-  documentation: "Documentation",
-  customs: "Customs",
-  pickup: "Pickup",
-  handling: "Handling",
-  other: "Other",
-}
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
   draft: "Draft",
@@ -41,7 +35,7 @@ export function CustomerInvoiceDetailPage() {
   const inv = invoice.data
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6 uppercase">
       <PageHeader
         title={inv.invoice_number}
         description={
@@ -54,6 +48,8 @@ export function CustomerInvoiceDetailPage() {
 
       <div className="rounded-xl border border-border bg-card p-5"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Invoice total</p><p className="mt-1 font-heading text-3xl font-semibold tabular-nums">{formatMoney(inv.total, inv.currency)}</p><p className="mt-2 text-sm text-muted-foreground">{inv.origin} → {inv.destination}{inv.job_number ? ` · ${inv.job_number}` : ""}</p></div>
 
+<CommercialDetails rows={[["QUOTE", inv.quote_reference], ["QUOTE DATE", inv.quote_date], ["QUOTE VALID UNTIL", inv.quote_valid_until], ["AIRLINE", inv.carrier], ["CARGO", inv.cargo_type], ["GROSS WEIGHT (KG)", inv.weight_kg], ["CHARGEABLE WEIGHT (KG)", inv.chargeable_weight_kg], ["VOLUME (CBM)", inv.volume_cbm], ["PIECES", inv.pieces], ["HS CODE", inv.hs_code], ["DIMENSIONS", inv.dimensions], ["READY DATE", inv.ready_date], ["DESCRIPTION", inv.description], ["FLIGHT", inv.voyage_flight_number], ["REMARKS", inv.remarks]]} clauses={inv.clauses} />
+      <ScheduleReference schedules={inv.schedule} />
       {inv.status === "cancelled" && (
         <div className="rounded-xl border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
           This invoice has been cancelled and is no longer payable. Contact us if you have questions.
@@ -65,35 +61,15 @@ export function CustomerInvoiceDetailPage() {
           <CardTitle className="text-base">Charges</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {inv.line_items.map((li) => (
-                  <TableRow key={li.id}>
-                    <TableCell>
-                      <span>{KIND_LABEL[li.kind] ?? li.kind}</span>
-                      <p className="text-xs text-muted-foreground">{li.description}</p>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatMoney(li.amount, inv.currency)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <CommercialCharges items={inv.line_items} currency={inv.currency} />
           <div className="mt-4 space-y-1.5 border-t border-border pt-4 text-sm">
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal</span>
               <span className="tabular-nums">{formatMoney(inv.subtotal, inv.currency)}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
-              <span>Markup</span>
-              <span className="tabular-nums">{formatMoney(inv.markup_amount, inv.currency)}</span>
+              <span>Service charge</span>
+              <span className="tabular-nums">{formatMoney(inv.service_charge_amount, inv.currency)}</span>
             </div>
             {Number(inv.tax_amount) > 0 && (
               <div className="flex justify-between text-muted-foreground">

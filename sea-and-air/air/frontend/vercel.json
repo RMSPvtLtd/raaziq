@@ -1,7 +1,7 @@
 {
   "rewrites": [
-    { "source": "/sea-api/:path*", "destination": "https://backend-eight-xi-99.vercel.app/api/:path*" },
-    { "source": "/api/:path*", "destination": "https://backend-ten-fawn-46.vercel.app/:path*" },
+    { "source": "/sea-api/:path*", "destination": "https://raaziq-sea-api.vercel.app/api/:path*" },
+    { "source": "/api/:path*", "destination": "https://raaziq-air-api.vercel.app/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

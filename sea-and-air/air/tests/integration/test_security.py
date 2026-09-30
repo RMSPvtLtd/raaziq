@@ -156,9 +156,10 @@ def test_tampered_token_signature_is_rejected(client, db_session):
     db_session.commit()
     token = client.post("/ops/login", json={"username": "sig.test", "password": "OpsTest123!"}).json()["access_token"]
 
-    # Flip the last character of the signature segment.
+    # Change significant bits. The last base64url character contains padding
+    # bits, so changing it can leave the decoded signature bytes identical.
     header, payload, signature = token.split(".")
-    forged = f"{header}.{payload}.{signature[:-1]}{'A' if signature[-1] != 'A' else 'B'}"
+    forged = f"{header}.{payload}.{'A' if signature[0] != 'A' else 'B'}{signature[1:]}"
 
     assert client.get("/shipments", headers={"Authorization": f"Bearer {forged}"}).status_code == 401
 
@@ -941,14 +942,14 @@ def test_sql_injection_stored_in_text_fields_is_inert(client, db_session, ops_he
     r = client.post(
         "/inquiries",
         json={
-            "customer_id": customer.id, "origin": "'; DROP TABLE quote; --", "destination": "Dubai",
+            "customer_id": customer.id, "origin": "LHE", "destination": "DXB", "description": "'; DROP TABLE quote; --",
             "mode": "air", "cargo_type": "x' OR '1'='1", "weight_kg": "100", "volume_cbm": "0.2",
             "incoterm": "DAP",
         },
         headers=ops_headers,
     )
     assert r.status_code == 201
-    assert r.json()["origin"] == "'; DROP TABLE quote; --", "payload should round-trip as literal text"
+    assert r.json()["description"] == "'; DROP TABLE quote; --", "payload should round-trip as literal text"
     assert db_session.execute(select(m.Quote)) is not None  # quote table still exists
 
 

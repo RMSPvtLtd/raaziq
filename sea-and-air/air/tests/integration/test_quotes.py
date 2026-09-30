@@ -556,7 +556,7 @@ def test_generate_quotes_returns_one_per_carrier(db_session):
 
     assert len(quotes) == 2
     carriers = {q.carrier for q in quotes}
-    assert carriers == {"PIA", "Emirates SkyCargo"}
+    assert carriers == {"PIA", "EMIRATES"}
     assert all(not q.is_manual for q in quotes)
     assert all(q.revision_number == 1 and q.root_quote_id is None for q in quotes)
 
@@ -565,11 +565,11 @@ def test_regenerating_supersedes_the_correct_per_carrier_lineage(db_session):
     inquiry = _two_carrier_rate_cards(db_session)
     first_batch = generate_quotes(db_session, inquiry.id, today=TODAY)
     pia_1 = next(q for q in first_batch if q.carrier == "PIA")
-    emirates_1 = next(q for q in first_batch if q.carrier == "Emirates SkyCargo")
+    emirates_1 = next(q for q in first_batch if q.carrier == "EMIRATES")
 
     second_batch = generate_quotes(db_session, inquiry.id, today=TODAY)
     pia_2 = next(q for q in second_batch if q.carrier == "PIA")
-    emirates_2 = next(q for q in second_batch if q.carrier == "Emirates SkyCargo")
+    emirates_2 = next(q for q in second_batch if q.carrier == "EMIRATES")
 
     assert pia_2.revision_number == 2
     assert pia_2.root_quote_id == pia_1.id
@@ -580,6 +580,39 @@ def test_regenerating_supersedes_the_correct_per_carrier_lineage(db_session):
     # Each carrier's lineage stays independent -- PIA's revision doesn't
     # touch Emirates' root_quote_id or vice versa.
     assert pia_2.root_quote_id != emirates_2.root_quote_id
+
+
+@pytest.mark.parametrize("carrier_expired", [False, True])
+def test_regeneration_closes_all_legacy_alias_offers(db_session, carrier_expired):
+    inquiry = _two_carrier_rate_cards(db_session)
+    original = next(q for q in generate_quotes(db_session, inquiry.id, today=TODAY) if q.carrier == "EMIRATES")
+    original.carrier = "EK"
+    newer_alias = m.Quote(
+        inquiry_id=inquiry.id, status=QuoteStatus.DRAFT, currency="USD", carrier="Emirates SkyCargo",
+        is_manual=False, valid_until=TODAY, subtotal=Decimal("100"), markup_amount=Decimal("20"),
+        total=Decimal("120"), clauses="LATEST AIRLINE TERMS",
+    )
+    db_session.add(newer_alias)
+    db_session.flush()
+    manual = create_manual_quote(db_session, inquiry.id, carrier="EK", currency="USD", line_items=_manual_line_items(), today=TODAY)
+    if carrier_expired:
+        for card in db_session.scalars(select(m.RateCard)).all():
+            if card.carrier == "Emirates SkyCargo":
+                card.valid_until = TODAY - timedelta(days=1)
+        db_session.flush()
+
+    revised = generate_quotes(db_session, inquiry.id, today=TODAY)
+
+    assert not original.is_current
+    assert not newer_alias.is_current
+    assert manual.is_current  # independent manual offers must remain intact
+    if not carrier_expired:
+        emirates = next(q for q in revised if q.carrier == "EMIRATES")
+        assert emirates.root_quote_id == newer_alias.id
+        assert emirates.clauses == "LATEST AIRLINE TERMS"
+    for stale in (original, newer_alias):
+        with pytest.raises(InvalidQuoteState):
+            accept_quote(db_session, stale.id, "ops", today=TODAY)
 
 
 def test_a_new_carrier_added_between_generations_starts_a_fresh_lineage(db_session):
@@ -594,7 +627,7 @@ def test_a_new_carrier_added_between_generations_starts_a_fresh_lineage(db_sessi
     second_batch = generate_quotes(db_session, inquiry.id, today=TODAY)
 
     assert len(second_batch) == 2
-    emirates = next(q for q in second_batch if q.carrier == "Emirates SkyCargo")
+    emirates = next(q for q in second_batch if q.carrier == "EMIRATES")
     assert emirates.revision_number == 1
     assert emirates.root_quote_id is None
 
@@ -614,7 +647,7 @@ def test_a_carrier_dropping_out_gets_superseded_with_no_successor(db_session):
     second_batch = generate_quotes(db_session, inquiry.id, today=TODAY)
 
     assert len(second_batch) == 1
-    assert second_batch[0].carrier == "Emirates SkyCargo"
+    assert second_batch[0].carrier == "EMIRATES"
     assert pia_1.superseded_at is not None
     assert pia_1.is_current is False
 
@@ -623,7 +656,7 @@ def test_accepting_one_sibling_supersedes_the_other_carriers(db_session):
     inquiry = _two_carrier_rate_cards(db_session)
     quotes = generate_quotes(db_session, inquiry.id, today=TODAY)
     pia = next(q for q in quotes if q.carrier == "PIA")
-    emirates = next(q for q in quotes if q.carrier == "Emirates SkyCargo")
+    emirates = next(q for q in quotes if q.carrier == "EMIRATES")
 
     accept_quote(db_session, pia.id, "ops", today=TODAY)
 
@@ -668,7 +701,7 @@ def test_create_manual_quote(db_session):
         line_items=_manual_line_items(), today=TODAY,
     )
 
-    assert quote.carrier == "Qatar Airways Cargo"
+    assert quote.carrier == "QATAR AIRWAYS CARGO"
     assert quote.is_manual is True
     assert quote.revision_number == 1
     assert quote.root_quote_id is None
@@ -738,7 +771,7 @@ def test_manual_quote_endpoint(client, db_session, ops_headers):
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["carrier"] == "Qatar Airways Cargo"
+    assert body["carrier"] == "QATAR AIRWAYS CARGO"
     assert body["is_manual"] is True
 
 
@@ -754,4 +787,4 @@ def test_generate_endpoint_returns_a_list(client, db_session, ops_headers):
     body = r.json()
     assert isinstance(body, list)
     assert len(body) == 2
-    assert {q["carrier"] for q in body} == {"PIA", "Emirates SkyCargo"}
+    assert {q["carrier"] for q in body} == {"PIA", "EMIRATES"}

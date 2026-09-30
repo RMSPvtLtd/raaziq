@@ -53,8 +53,8 @@ export function InquiryForm() {
   const customerValid = customerMode === "existing" ? Boolean(customerId) : Boolean(newName.trim() && newEmail.trim())
   const formValid =
     customerValid &&
-    origin.trim() &&
-    destination.trim() &&
+    /^[A-Z]{3}$/.test(origin) &&
+    /^[A-Z]{3}$/.test(destination) &&
     cargoType.trim() &&
     Number(weightKg) > 0 &&
     Number(volumeCbm) > 0 &&
@@ -200,10 +200,10 @@ export function InquiryForm() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Origin" required>
-              <Input value={origin} onChange={(e) => setOrigin(e.target.value)} placeholder="e.g. Lahore" />
+              <Input value={origin} onChange={(e) => setOrigin(e.target.value.toUpperCase())} placeholder="LHE" maxLength={3} pattern="[A-Z]{3}" />
             </Field>
             <Field label="Destination" required>
-              <Input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="e.g. Dubai" />
+              <Input value={destination} onChange={(e) => setDestination(e.target.value.toUpperCase())} placeholder="DXB / LHR" maxLength={3} pattern="[A-Z]{3}" />
             </Field>
           </div>
 

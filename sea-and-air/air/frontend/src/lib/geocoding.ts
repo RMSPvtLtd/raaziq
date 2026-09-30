@@ -4,6 +4,10 @@ const STORAGE_PREFIX = "raaziq.geocode.v2:"
 // City centroids from GeoNames, verified 2026-09-05. These are route endpoints,
 // never airports, terminals, or vehicle positions. See MAPPING.md for provenance.
 const BUILTIN_PLACES: Record<string, Coordinates> = {
+  lhe: [74.350713, 31.557996],
+  dxb: [55.309275, 25.07725],
+  khi: [67.0104, 24.8608],
+  lhr: [-0.12574, 51.50853],
   lahore: [74.350713, 31.557996],
   "lahore, pakistan": [74.350713, 31.557996],
   dubai: [55.309275, 25.07725],

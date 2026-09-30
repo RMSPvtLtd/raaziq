@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+.vercel/
 
 # Python
 __pycache__/
@@ -21,3 +22,7 @@ venv/
 .vscode/
 .idea/
 Thumbs.db
+
+# Private operational references; never publish customer documents.
+/Real-Samples/
+/tmp/

@@ -18,12 +18,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 # connect to (DATABASE_URL), rather than a URL hand-copied into alembic.ini.
 import models  # noqa: F401,E402  (populates Base.metadata as a side effect)
 from config import get_settings  # noqa: E402
-from db import Base  # noqa: E402
+from db import Base, normalize_database_url  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+config.set_main_option("sqlalchemy.url", normalize_database_url(get_settings().database_url).replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

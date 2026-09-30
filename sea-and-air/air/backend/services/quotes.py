@@ -65,11 +65,13 @@ from sqlalchemy.orm import Session
 
 from config import get_settings
 from utils.errors import InvalidMoneyAmount, InvalidQuoteState, NotFound, QuoteExpired
+from utils.locations import carrier_name
 from models.enums import ChargeKind, EventSource, QuoteStatus, ReferenceType, ShipmentStage
 from models.inquiry import Inquiry
 from models.quote import Quote, QuoteLineItem
 from models.shipment import Shipment, ShipmentReference
 from schemas.money import MAX_MONEY
+from services.airline_schedules import snapshot_schedules
 from services.email import send_pdf_email
 from services.pdf_documents import render_quote_pdf
 from services.pricing import price_all_matching
@@ -200,13 +202,25 @@ def _assert_inquiry_not_already_won(session: Session, inquiry_id: int) -> None:
         )
 
 
-def _locked_shipment_for_inquiry(session: Session, inquiry: Inquiry) -> Shipment:
-    # Row-locked on PostgreSQL so a concurrent accept_quote on the same
-    # inquiry can't race with a batch generation underneath it.
-    stmt = select(Shipment).where(Shipment.id == inquiry.shipment.id)
+def _locked_shipment_for_inquiry(session: Session, inquiry_id: int) -> Shipment:
+    # All siblings share this lock. Reload after waiting: an identity-map
+    # copy can predate another request's acceptance or regeneration.
+    stmt = select(Shipment).where(Shipment.inquiry_id == inquiry_id).execution_options(populate_existing=True)
     if session.bind.dialect.name == "postgresql":
         stmt = stmt.with_for_update()
-    return session.execute(stmt).scalar_one()
+    shipment = session.execute(stmt).scalar_one_or_none()
+    if shipment is None:
+        raise NotFound(f"Inquiry {inquiry_id} has no tracking record")
+    return shipment
+
+
+def _locked_quote_for_action(session: Session, quote_id: int) -> tuple[Quote, Shipment]:
+    quote = _get_quote(session, quote_id)
+    shipment = _locked_shipment_for_inquiry(session, quote.inquiry_id)
+    stmt = select(Quote).where(Quote.id == quote_id).execution_options(populate_existing=True)
+    if session.bind.dialect.name == "postgresql":
+        stmt = stmt.with_for_update()
+    return session.execute(stmt).scalar_one(), shipment
 
 
 def generate_quotes(session: Session, inquiry_id: int, *, today: date | None = None) -> list[Quote]:
@@ -229,7 +243,7 @@ def generate_quotes(session: Session, inquiry_id: int, *, today: date | None = N
         # this would only be missing for data created before that existed.
         raise NotFound(f"Inquiry {inquiry_id} has no tracking record")
 
-    shipment = _locked_shipment_for_inquiry(session, inquiry)
+    shipment = _locked_shipment_for_inquiry(session, inquiry.id)
     _assert_inquiry_not_already_won(session, inquiry_id)
 
     settings = get_settings()
@@ -244,10 +258,10 @@ def generate_quotes(session: Session, inquiry_id: int, *, today: date | None = N
                 Quote.inquiry_id == inquiry_id,
                 Quote.superseded_at.is_(None),
                 Quote.is_manual.is_(False),
-            )
+            ).order_by(Quote.id).execution_options(populate_existing=True)
         ).scalars()
     )
-    current_by_carrier = {q.carrier: q for q in current_auto}
+    current_by_carrier = {carrier_name(q.carrier): q for q in current_auto}
 
     pairs: list[tuple[Quote, Quote | None]] = []
     for priced in priced_list:
@@ -258,7 +272,9 @@ def generate_quotes(session: Session, inquiry_id: int, *, today: date | None = N
             currency=priced.currency,
             carrier=priced.carrier,
             is_manual=False,
-            valid_until=today + timedelta(days=settings.quote_validity_days),
+            valid_until=min(today + timedelta(days=settings.quote_validity_days), priced.valid_until),
+            clauses=old.clauses if old else None,
+            schedule_snapshot=snapshot_schedules(session, inquiry, priced.carrier, today),
             tax_amount=Decimal("0"),
             discount_amount=Decimal("0"),
             revision_number=(old.revision_number + 1) if old else 1,
@@ -280,13 +296,20 @@ def generate_quotes(session: Session, inquiry_id: int, *, today: date | None = N
                 note=f"{_quote_ref(quote)} created, superseding {_quote_ref(old)}.",
                 source=EventSource.SYSTEM, is_internal=True,
             )
-    for dropped in current_by_carrier.values():
-        # This carrier matched a previous generation but not this one (e.g.
-        # its rate card expired) -- no successor, just no longer offered.
+    replaced_carriers = {quote.carrier for quote, _ in pairs}
+    for dropped in current_auto:
+        if dropped.superseded_at is not None:
+            continue
+        # Visit all originals: legacy aliases can share one dictionary key.
         dropped.superseded_at = now
+        reason = (
+            "replaced by the latest offer for its airline"
+            if carrier_name(dropped.carrier) in replaced_carriers
+            else "no matching rate card for its carrier"
+        )
         record_note(
             session, shipment, actor="system",
-            note=f"{_quote_ref(dropped)} is no longer offered: no matching rate card for its carrier.",
+            note=f"{_quote_ref(dropped)} is no longer offered: {reason}.",
             source=EventSource.SYSTEM, is_internal=True,
         )
 
@@ -329,6 +352,8 @@ def create_manual_quote(
     currency: str,
     line_items: list[ManualLineItem],
     today: date | None = None,
+    valid_until: date | None = None,
+    clauses: str | None = None,
 ) -> Quote:
     """Lets ops price a quote by hand -- typing in today's rate directly,
     the way filling in one rate-card break by hand would -- for a carrier
@@ -347,6 +372,11 @@ def create_manual_quote(
     today = today or date.today()
     if not line_items:
         raise InvalidQuoteState("A manual quote needs at least one line item")
+    if valid_until is not None and valid_until < today:
+        raise InvalidQuoteState("Quote validity cannot end before today")
+    carrier = carrier_name(carrier)
+    if not carrier:
+        raise InvalidQuoteState("A manual quote needs an airline")
 
     inquiry = session.get(Inquiry, inquiry_id)
     if inquiry is None:
@@ -354,7 +384,7 @@ def create_manual_quote(
     if inquiry.shipment is None:
         raise NotFound(f"Inquiry {inquiry_id} has no tracking record")
 
-    shipment = _locked_shipment_for_inquiry(session, inquiry)
+    shipment = _locked_shipment_for_inquiry(session, inquiry.id)
     _assert_inquiry_not_already_won(session, inquiry_id)
 
     settings = get_settings()
@@ -364,7 +394,9 @@ def create_manual_quote(
         currency=currency,
         carrier=carrier,
         is_manual=True,
-        valid_until=today + timedelta(days=settings.quote_validity_days),
+        valid_until=valid_until or today + timedelta(days=settings.quote_validity_days),
+        clauses=clauses,
+        schedule_snapshot=snapshot_schedules(session, inquiry, carrier, today),
         tax_amount=Decimal("0"),
         discount_amount=Decimal("0"),
         revision_number=1,
@@ -480,28 +512,32 @@ def set_quote_clauses(session: Session, quote_id: int, *, clauses: str | None, t
     return quote
 
 
-def email_quote(session: Session, quote_id: int) -> None:
+def email_quote(session: Session, quote_id: int, *, automatic: bool = False) -> Quote:
     """Emails the quote's PDF to the inquiry's customer."""
     quote = _get_quote(session, quote_id)
     customer = quote.inquiry.customer
 
-    pdf_bytes = render_quote_pdf(session, quote)
-    send_pdf_email(
+    from services.companies import list_companies
+    from services.email import deliver_document_email
+    companies = list_companies(session)
+    company = next((c for c in companies if c.is_default), companies[0] if companies else None)
+    return deliver_document_email(
+        session, quote, company=company, automatic=automatic,
         to_email=customer.email,
         subject=f"Quotation {_quote_ref(quote)} - Raaziq International",
         body_text=(
             f"Dear {customer.name},\n\nPlease find attached our quotation {_quote_ref(quote)} "
             f"for {quote.inquiry.origin} to {quote.inquiry.destination}.\n\nRegards,\nRaaziq International"
         ),
-        pdf_bytes=pdf_bytes,
+        pdf_factory=lambda: render_quote_pdf(session, quote, customer_safe=True),
         pdf_filename=f"quote-{quote.id}.pdf",
     )
 
 
 def send_quote(session: Session, quote_id: int, *, today: date | None = None) -> Quote:
-    """MVP behavior: marks the quote as sent only; no email or PDF is generated."""
+    """Publish once; API delivery happens after this transaction commits."""
     today = today or date.today()
-    quote = _get_quote(session, quote_id)
+    quote, _ = _locked_quote_for_action(session, quote_id)
     _apply_lazy_expiry(quote, today)
     _assert_not_superseded(quote)
 
@@ -528,20 +564,7 @@ def accept_quote(session: Session, quote_id: int, actor: str, *, today: date | N
     """
     today = today or date.today()
 
-    # Row-locked on PostgreSQL (see services.shipments._lock_counter_row for
-    # why SQLite doesn't need the equivalent here).
-    stmt = select(Quote).where(Quote.id == quote_id)
-    if session.bind.dialect.name == "postgresql":
-        stmt = stmt.with_for_update()
-    quote = session.execute(stmt).scalar_one_or_none()
-    if quote is None:
-        raise NotFound(f"Quote {quote_id} not found")
-
-    shipment = session.execute(
-        select(Shipment).where(Shipment.inquiry_id == quote.inquiry_id)
-    ).scalar_one_or_none()
-    if shipment is None:
-        raise NotFound(f"Inquiry {quote.inquiry_id} has no tracking record")
+    quote, shipment = _locked_quote_for_action(session, quote_id)
 
     if shipment.job_number is not None:
         # Idempotent: a quote already accepted (job number already assigned)
@@ -569,6 +592,7 @@ def accept_quote(session: Session, quote_id: int, actor: str, *, today: date | N
     job_number = allocate_job_number(session, today.year)
     shipment.quote_id = quote.id
     shipment.job_number = job_number
+    shipment.carrier = carrier_name(quote.carrier)
 
     advance_stage(
         session, shipment, ShipmentStage.JOB_OPENING,
@@ -616,12 +640,7 @@ def reject_quote(
     if not reason or not reason.strip():
         raise InvalidQuoteState("A rejection reason is required")
 
-    stmt = select(Quote).where(Quote.id == quote_id)
-    if session.bind.dialect.name == "postgresql":
-        stmt = stmt.with_for_update()
-    quote = session.execute(stmt).scalar_one_or_none()
-    if quote is None:
-        raise NotFound(f"Quote {quote_id} not found")
+    quote, shipment = _locked_quote_for_action(session, quote_id)
 
     _apply_lazy_expiry(quote, today)
     _assert_not_superseded(quote)
@@ -638,7 +657,6 @@ def reject_quote(
     # only set once a quote is accepted, so it would be None here for the
     # ordinary case of rejecting an offer that was never accepted, silently
     # dropping the audit note. The inquiry's shipment always exists.
-    shipment = quote.inquiry.shipment
     if shipment is not None:
         record_note(
             session, shipment, actor=actor,

@@ -3,6 +3,8 @@ type ComparableQuote = {
   is_current: boolean
   currency: string
   total: string
+  status?: QuoteStatus
+  valid_until?: string
 }
 
 type QuoteStatus = "draft" | "sent" | "accepted" | "expired" | "rejected"
@@ -28,12 +30,16 @@ export function comparisonMatrix(quotes: MatrixQuote[]) {
   })
 }
 
-export function prepareQuoteComparison<T extends ComparableQuote>(offers: T[]) {
+export function prepareQuoteComparison<T extends ComparableQuote>(offers: T[], now = new Date()) {
   const quotes = offers
     .filter((quote) => quote.is_current)
     .toSorted((a, b) => a.currency.localeCompare(b.currency) || amount(a.total) - amount(b.total) || a.id - b.id)
-  const currencies = new Set(quotes.map((quote) => quote.currency))
-  return { quotes, lowestQuoteId: currencies.size === 1 && quotes.length ? quotes[0].id : null }
+  const available = quotes.filter((quote) => {
+    const status = quote.status && quote.valid_until ? effectiveQuoteStatus({ status: quote.status, valid_until: quote.valid_until }, now) : quote.status
+    return !status || status === "draft" || status === "sent"
+  })
+  const currencies = new Set(available.map((quote) => quote.currency))
+  return { quotes, lowestQuoteId: currencies.size === 1 && available.length > 1 ? available[0].id : null }
 }
 
 export function manualSubtotal(items: { amount: string }[]) {

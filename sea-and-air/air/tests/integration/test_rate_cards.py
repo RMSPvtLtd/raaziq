@@ -30,8 +30,8 @@ def test_create_rate_card(client, ops_headers):
     r = client.post("/rate-cards", json=VALID_PAYLOAD, headers=ops_headers)
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["origin"] == "Lahore"
-    assert body["destination"] == "London"
+    assert body["origin"] == "LHE"
+    assert body["destination"] == "LHR"
     assert len(body["breaks"]) == 2
     assert len(body["charges"]) == 1
 

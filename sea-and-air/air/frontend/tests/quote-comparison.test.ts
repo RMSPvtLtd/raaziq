@@ -25,6 +25,19 @@ test("comparison does not claim a lowest price across currencies", () => {
   assert.equal(prepareQuoteComparison(quotes).lowestQuoteId, null)
 })
 
+test("lowest price applies only while comparing available unexpired offers", () => {
+  const base = { is_current: true, currency: "USD", valid_until: "2026-09-28" }
+  const offers = [
+    { ...base, id: 1, total: "1", status: "accepted" as const },
+    { ...base, id: 2, total: "2", status: "draft" as const, valid_until: "2026-09-27" },
+    { ...base, id: 3, total: "3", status: "sent" as const },
+    { ...base, id: 4, total: "4", status: "draft" as const },
+  ]
+  const now = new Date("2026-09-28T12:00:00")
+  assert.equal(prepareQuoteComparison(offers, now).lowestQuoteId, 3)
+  assert.equal(prepareQuoteComparison(offers.slice(0, 3), now).lowestQuoteId, null)
+})
+
 test("comparison matrix aligns charge kinds across carriers", () => {
   const rows = comparisonMatrix([
     { id: 1, line_items: [{ kind: "freight", final_total: "100" }, { kind: "handling", final_total: "25" }] },

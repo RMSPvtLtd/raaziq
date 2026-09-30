@@ -1,3 +1,4 @@
+import { EmailSettings } from "@/components/shared/EmailSettings"
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Link } from "react-router-dom"
@@ -31,6 +32,7 @@ export function InvoiceListPage() {
     <div>
       <PageHeader title="Invoices" description="Every invoice generated from an accepted quote." />
 
+      <EmailSettings />
       <Tabs value={tab} onValueChange={(v) => setTab(v as ListTab)} className="mb-3 overflow-x-auto">
         <TabsList className="max-w-full justify-start">
           {(["all", "draft", "issued", "paid", "cancelled"] as const).map((status) => <TabsTrigger key={status} value={status}>{status === "all" ? "All" : STATUS_LABEL[status]} <span className="tabular-nums text-muted-foreground">{(invoices.data ?? []).filter((invoice) => status === "all" || invoice.status === status).length}</span></TabsTrigger>)}

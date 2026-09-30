@@ -168,6 +168,15 @@ export interface Quote {
   created_at: string
   updated_at: string
   line_items: QuoteLineItem[]
+  schedule_snapshot: AirlineScheduleInput[] | null
+  email_status: string
+  email_recipient: string | null
+  email_error: string | null
+  emailed_at: string | null
+}
+
+export type CustomerQuote = { service_charge_amount: string; mode: string; cargo_type: string; weight_kg: string; chargeable_weight_kg: string; volume_cbm: string; pieces: number | null; dimensions: string | null; description: string | null; ready_date: string | null; incoterm: string; hs_code: string | null } & Pick<Quote, "id" | "inquiry_id" | "origin" | "destination" | "status" | "invoice_id" | "currency" | "carrier" | "total" | "subtotal" | "tax_amount" | "discount_amount" | "valid_until" | "clauses" | "revision_number" | "root_quote_id" | "is_current" | "created_at" | "updated_at" | "schedule_snapshot"> & {
+  line_items: Pick<QuoteLineItem, "id" | "kind" | "description" | "quantity" | "unit_price" | "final_total">[]
 }
 
 export interface QuoteAdjustments {
@@ -188,6 +197,8 @@ export interface ManualQuoteInput {
   carrier: string
   currency: string
   line_items: ManualLineItemInput[]
+  valid_until?: string
+  clauses?: string | null
 }
 
 export interface LineItemOverride {
@@ -363,6 +374,9 @@ export interface Company {
   tax_id: string | null
   company_reg_no: string | null
   is_default: boolean
+  notification_email: string | null
+  automatic_email_enabled: boolean
+  email_configured: boolean
 }
 
 export interface InvoiceLineItem {
@@ -418,6 +432,17 @@ export interface Invoice {
   clauses_snapshot: string | null
   created_at: string
   line_items: InvoiceLineItem[]
+  quote_reference_snapshot: string | null
+  quote_date_snapshot: string | null
+  quote_valid_until_snapshot: string | null
+  dimensions_snapshot: string | null
+  description_snapshot: string | null
+  ready_date_snapshot: string | null
+  schedule_snapshot: AirlineScheduleInput[] | null
+  email_status: string
+  email_recipient: string | null
+  email_error: string | null
+  emailed_at: string | null
 }
 
 // --- worker portal / auth ---
@@ -486,6 +511,8 @@ export interface CustomerInvoiceLineItem {
   kind: ChargeKind
   description: string
   amount: string
+  quantity: string
+  unit_price: string
 }
 
 export interface CustomerInvoiceSummary {
@@ -498,13 +525,13 @@ export interface CustomerInvoiceSummary {
 }
 
 export interface CustomerInvoiceDetail {
+  service_charge_amount: string
   id: number
   invoice_number: string
   status: InvoiceStatus
   issued_date: string
   currency: string
   subtotal: string
-  markup_amount: string
   tax_amount: string
   discount_amount: string
   total: string
@@ -513,6 +540,24 @@ export interface CustomerInvoiceDetail {
   incoterm: string
   job_number: string | null
   line_items: CustomerInvoiceLineItem[]
+  quote_reference: string | null
+  quote_date: string | null
+  quote_valid_until: string | null
+  dimensions: string | null
+  description: string | null
+  ready_date: string | null
+  schedule: AirlineScheduleInput[] | null
+  carrier: string | null
+  cargo_type: string | null
+  mode: string
+  hs_code: string | null
+  pieces: number | null
+  weight_kg: string
+  volume_cbm: string
+  chargeable_weight_kg: string
+  voyage_flight_number: string | null
+  clauses: string | null
+  remarks: string | null
 }
 
 // --- ops auth ---
@@ -619,6 +664,12 @@ export interface AirlineSchedule {
   notes: string | null
   created_at: string
   updated_at: string
+  flight_number?: string | null
+  routing?: string | null
+  departure_time?: string | null
+  transit_time?: string | null
+  valid_from?: string | null
+  valid_until?: string | null
 }
 
 export interface AirlineScheduleInput {
@@ -628,4 +679,17 @@ export interface AirlineScheduleInput {
   mode: TransportMode
   days_of_week: DayOfWeek[]
   notes: string | null
+  flight_number?: string | null
+  routing?: string | null
+  departure_time?: string | null
+  transit_time?: string | null
+  valid_from?: string | null
+  valid_until?: string | null
+}
+
+export interface EmailResult {
+  sent: boolean
+  status: string
+  recipient: string | null
+  error: string | null
 }

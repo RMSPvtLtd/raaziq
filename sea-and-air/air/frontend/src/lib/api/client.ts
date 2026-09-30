@@ -11,6 +11,8 @@ import type {
   Company,
   Customer,
   CustomerCreate,
+  CustomerQuote,
+  EmailResult,
   CustomerInvoiceDetail,
   CustomerInvoiceSummary,
   CustomerLoginResponse,
@@ -214,7 +216,7 @@ export const quotesApi = {
     }),
   setClauses: (id: number, clauses: string | null) =>
     opsRequest<Quote>(`/quotes/${id}/clauses`, { method: "PATCH", body: JSON.stringify({ clauses }) }),
-  email: (id: number) => opsRequest<{ sent: boolean }>(`/quotes/${id}/email`, { method: "POST" }),
+  email: (id: number) => opsRequest<EmailResult>(`/quotes/${id}/email`, { method: "POST" }),
   send: (id: number) => opsRequest<Quote>(`/quotes/${id}/send`, { method: "POST" }),
   accept: (id: number) => opsRequest<Shipment>(`/quotes/${id}/accept`, { method: "POST" }),
   reject: (id: number, reason: string) =>
@@ -227,6 +229,7 @@ export const quotesApi = {
 
 export const companiesApi = {
   list: () => opsRequest<Company[]>("/companies"),
+  updateEmail: (id: number, payload: { notification_email: string | null; automatic_email_enabled: boolean }) => opsRequest<Company>(`/companies/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
 }
 
 // --- rate cards ---
@@ -269,7 +272,7 @@ export const invoicesApi = {
     }),
   cancel: (id: number, reason: string) =>
     opsRequest<Invoice>(`/invoices/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }),
-  email: (id: number) => opsRequest<{ sent: boolean }>(`/invoices/${id}/email`, { method: "POST" }),
+  email: (id: number) => opsRequest<EmailResult>(`/invoices/${id}/email`, { method: "POST" }),
   pdfUrl: (id: number) => `${BASE_URL}/invoices/${id}/pdf`,
 }
 
@@ -433,8 +436,8 @@ export const customerPortalApi = {
     request<CustomerShipmentSummary[]>(`/customer/shipments${qs({ completed })}`, { headers: authHeader(token) }),
   shipment: (token: string, id: number) =>
     request<TrackingResult>(`/customer/shipments/${id}`, { headers: authHeader(token) }),
-  quotes: (token: string) => request<Quote[]>("/customer/quotes", { headers: authHeader(token) }),
-  quote: (token: string, id: number) => request<Quote>(`/customer/quotes/${id}`, { headers: authHeader(token) }),
+  quotes: (token: string) => request<CustomerQuote[]>("/customer/quotes", { headers: authHeader(token) }),
+  quote: (token: string, id: number) => request<CustomerQuote>(`/customer/quotes/${id}`, { headers: authHeader(token) }),
   acceptQuote: (token: string, id: number) =>
     request<CustomerShipmentSummary>(`/customer/quotes/${id}/accept`, {
       method: "POST",

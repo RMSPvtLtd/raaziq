@@ -1,9 +1,19 @@
+import type { RateCardInput } from "./api/types"
+
+export function localDate(now = new Date()) {
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
+}
+
+export function copyRateForToday(card: RateCardInput, today = localDate()): RateCardInput {
+  return { ...card, valid_from: today, valid_until: today, breaks: card.breaks.map((item) => ({ ...item })), charges: card.charges.map((item) => ({ ...item })) }
+}
+
 export type RateCardView = "all" | "active" | "expiring" | "expired"
 
 export function rateCardMatchesView(
   card: { valid_from: string; valid_until: string },
   view: RateCardView,
-  today = new Date().toISOString().slice(0, 10),
+  today = localDate(),
 ) {
   if (view === "all") return true
   if (view === "expired") return card.valid_until < today

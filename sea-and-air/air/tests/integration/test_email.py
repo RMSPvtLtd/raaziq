@@ -38,7 +38,7 @@ def test_send_pdf_email_raises_when_not_configured(db_session):
 
 
 def test_send_pdf_email_success(db_session):
-    fake_settings = SimpleNamespace(resend_api_key="re_fake_key", resend_from_email="noreply@example.com")
+    fake_settings = SimpleNamespace(resend_api_key="re_fake_key", resend_from_email="noreply@example.com", notification_email=None)
     mock_response = Mock()
     mock_response.raise_for_status = Mock()
 
@@ -57,7 +57,7 @@ def test_send_pdf_email_success(db_session):
 
 
 def test_send_pdf_email_wraps_provider_error(db_session):
-    fake_settings = SimpleNamespace(resend_api_key="re_fake_key", resend_from_email="noreply@example.com")
+    fake_settings = SimpleNamespace(resend_api_key="re_fake_key", resend_from_email="noreply@example.com", notification_email=None)
     bad_response = httpx.Response(status_code=422, request=httpx.Request("POST", "https://api.resend.com/emails"))
 
     with patch("services.email.get_settings", return_value=fake_settings), \
@@ -101,7 +101,7 @@ def test_email_quote_endpoint_sends_when_configured(client, db_session, ops_head
     quote = generate_quote(db_session, inquiry.id, today=TODAY)
     db_session.commit()
 
-    fake_settings = SimpleNamespace(resend_api_key="re_fake_key", resend_from_email="noreply@example.com")
+    fake_settings = SimpleNamespace(resend_api_key="re_fake_key", resend_from_email="noreply@example.com", notification_email=None)
     mock_response = Mock()
     mock_response.raise_for_status = Mock()
 
@@ -110,5 +110,7 @@ def test_email_quote_endpoint_sends_when_configured(client, db_session, ops_head
         r = client.post(f"/quotes/{quote.id}/email", headers=ops_headers)
 
     assert r.status_code == 200, r.text
-    assert r.json() == {"sent": True}
+    assert r.json()["sent"] is True
+    assert r.json()["status"] == "sent"
+    assert r.json()["recipient"] == customer.email
     assert mock_post.call_count == 1

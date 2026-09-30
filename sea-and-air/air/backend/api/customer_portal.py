@@ -27,7 +27,7 @@ from schemas.customer_portal import (
     shipment_summary,
 )
 from schemas.customers import CustomerRead
-from schemas.quotes import QuoteRead
+from schemas.customer_quotes import CustomerQuoteRead, customer_quote
 from schemas.tracking import TrackingResult, from_shipment
 from utils.security import create_access_token, get_current_customer
 from services.customers import authenticate_customer, customer_quotes, customer_shipments
@@ -90,21 +90,21 @@ def get_shipment(
     return from_shipment(shipment)
 
 
-@router.get("/quotes", response_model=list[QuoteRead])
+@router.get("/quotes", response_model=list[CustomerQuoteRead])
 def list_quotes(
     customer: Customer = Depends(get_current_customer), db: Session = Depends(get_db)
-) -> list[Quote]:
-    return customer_quotes(db, customer)
+) -> list[CustomerQuoteRead]:
+    return [customer_quote(quote) for quote in customer_quotes(db, customer)]
 
 
-@router.get("/quotes/{quote_id}", response_model=QuoteRead)
+@router.get("/quotes/{quote_id}", response_model=CustomerQuoteRead)
 def get_quote(
     quote_id: int, customer: Customer = Depends(get_current_customer), db: Session = Depends(get_db)
-) -> Quote:
+) -> CustomerQuoteRead:
     quote = db.get(Quote, quote_id)
     if quote is None or quote.inquiry.customer_id != customer.id:
         raise NotFound(f"Quote {quote_id} not found")
-    return quote
+    return customer_quote(quote)
 
 
 @router.post("/quotes/{quote_id}/accept", response_model=CustomerShipmentSummary)

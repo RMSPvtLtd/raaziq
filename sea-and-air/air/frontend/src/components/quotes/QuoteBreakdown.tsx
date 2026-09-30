@@ -1,3 +1,5 @@
+import { EmailStatus } from "@/components/shared/EmailSettings"
+import { ScheduleReference } from "@/components/shared/ScheduleReference"
 import { useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
@@ -71,17 +73,21 @@ export function QuoteBreakdown({ quoteId }: { quoteId: number }) {
   async function handleEmail() {
     setEmailing(true)
     try {
-      await quotesApi.email(q.id)
-      toast.success("Quote emailed to customer")
+      const result = await quotesApi.email(q.id)
+      if (result.sent) toast.success(`Quote emailed to ${result.recipient}`)
+      else toast.error(result.error ?? "Email was not sent")
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not send email.")
     } finally {
       setEmailing(false)
+      quote.reload()
     }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 uppercase">
+      <EmailStatus record={q} />
+      <ScheduleReference schedules={q.schedule_snapshot} />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -499,8 +505,9 @@ function ActionsBar({
   async function handleSend() {
     setSending(true)
     try {
-      await quotesApi.send(quote.id)
-      toast.success("Quote marked as sent")
+      const result = await quotesApi.send(quote.id)
+      toast.success("Quote published")
+      if (result.email_status !== "sent") toast.info(result.email_error ?? `Email: ${result.email_status}`)
       onSent()
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not send quote.")

@@ -37,3 +37,10 @@ class Company(TimestampMixin, Base):
     bank_sort_code: Mapped[str | None] = mapped_column(String(100))
 
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notification_email: Mapped[str | None] = mapped_column(String(320))
+    automatic_email_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    @property
+    def email_configured(self) -> bool:
+        from services.email import email_is_configured
+        return email_is_configured()

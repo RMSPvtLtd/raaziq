@@ -3,6 +3,8 @@ exercising service functions directly; `client` is for exercising the API
 through FastAPI's TestClient with `get_db` overridden onto the same engine.
 """
 
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -12,6 +14,23 @@ from sqlalchemy.pool import StaticPool
 import models  # noqa: F401  (populates Base.metadata)
 from db import Base, get_db
 from main import app as fastapi_app
+
+
+@pytest.fixture(autouse=True)
+def no_live_email(monkeypatch):
+    """Tests never inherit local mail credentials or contact email providers."""
+    from config import get_settings
+
+    for name in ("SMTP_USERNAME", "SMTP_PASSWORD", "RESEND_API_KEY", "NOTIFICATION_EMAIL"):
+        monkeypatch.setenv(name, "")
+    get_settings.cache_clear()
+    with (
+        patch("services.email.smtplib.SMTP", side_effect=AssertionError("Unmocked SMTP in test")),
+        patch("services.email.smtplib.SMTP_SSL", side_effect=AssertionError("Unmocked SMTP in test")),
+        patch("services.email.httpx.post", side_effect=AssertionError("Unmocked email API in test")),
+    ):
+        yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture()

@@ -1,3 +1,6 @@
+import { CommercialCharges } from "@/components/shared/CommercialCharges"
+import { CommercialDetails } from "@/components/shared/CommercialDetails"
+import { ScheduleReference } from "@/components/shared/ScheduleReference"
 import { useState } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -5,7 +8,6 @@ import { CheckCircle } from "@phosphor-icons/react"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { LoadingState, ErrorState } from "@/components/shared/States"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,14 +25,6 @@ import { ApiError, customerPortalApi } from "@/lib/api/client"
 import { formatDate, formatMoney } from "@/lib/format"
 import { effectiveQuoteStatus } from "@/lib/quote-comparison"
 
-const KIND_LABEL: Record<string, string> = {
-  freight: "Freight",
-  documentation: "Documentation",
-  customs: "Customs",
-  pickup: "Pickup",
-  handling: "Handling",
-  other: "Other",
-}
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
@@ -111,7 +105,7 @@ export function CustomerQuoteDetailPage() {
   const canAccept = q.is_current && (status === "draft" || status === "sent")
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6 uppercase">
       <PageHeader
         title={`Quote #${q.root_quote_id ?? q.id} Rev ${q.revision_number}`}
         description={
@@ -138,12 +132,9 @@ export function CustomerQuoteDetailPage() {
         </div>
       )}
 
-      {q.status === "rejected" && q.rejected_reason && (
-        <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          <span className="font-medium">Declined:</span> {q.rejected_reason}
-        </div>
-      )}
 
+<CommercialDetails rows={[["ROUTE", `${q.origin} → ${q.destination}`], ["AIRLINE", q.carrier], ["CARGO", q.cargo_type], ["INCOTERM", q.incoterm], ["GROSS WEIGHT (KG)", q.weight_kg], ["CHARGEABLE WEIGHT (KG)", q.chargeable_weight_kg], ["VOLUME (CBM)", q.volume_cbm], ["PIECES", q.pieces], ["HS CODE", q.hs_code], ["DIMENSIONS", q.dimensions], ["READY DATE", q.ready_date], ["DESCRIPTION", q.description]]} clauses={q.clauses} />
+      <ScheduleReference schedules={q.schedule_snapshot} />
       {canAccept && <AcceptQuoteCard quoteId={q.id} carrier={q.carrier} amount={q.total} currency={q.currency} defaultOpen={searchParams.get("accept") === "true"} onAccepted={quote.reload} />}
 
       <Card>
@@ -151,29 +142,7 @@ export function CustomerQuoteDetailPage() {
           <CardTitle className="text-base">Price breakdown</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {q.line_items.map((li) => (
-                  <TableRow key={li.id}>
-                    <TableCell>
-                      <span>{KIND_LABEL[li.kind] ?? li.kind}</span>
-                      <p className="text-xs text-muted-foreground">{li.description}</p>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatMoney(li.final_total, q.currency)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <CommercialCharges items={q.line_items} currency={q.currency} />
         </CardContent>
       </Card>
 
@@ -184,9 +153,10 @@ export function CustomerQuoteDetailPage() {
             <span className="tabular-nums">{formatMoney(q.subtotal, q.currency)}</span>
           </div>
           <div className="flex justify-between text-muted-foreground">
-            <span>Markup</span>
-            <span className="tabular-nums">{formatMoney(q.markup_amount, q.currency)}</span>
+            <span>Service charge</span>
+            <span className="tabular-nums">{formatMoney(q.service_charge_amount, q.currency)}</span>
           </div>
+<div className="flex justify-between"><span>Tax</span><span>{formatMoney(q.tax_amount, q.currency)}</span></div><div className="flex justify-between"><span>Discount</span><span>-{formatMoney(q.discount_amount, q.currency)}</span></div>
           <div className="mt-2 flex justify-between border-t border-border pt-2 text-base font-semibold text-foreground">
             <span>Total</span>
             <span className="tabular-nums">{formatMoney(q.total, q.currency)}</span>

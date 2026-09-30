@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { MagnifyingGlass, Plus, Scales, Trash } from "@phosphor-icons/react"
+import { AirlineInput } from "@/components/shared/AirlineInput"
 import { PageHeader } from "@/components/shared/PageHeader"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { LoadingState, ErrorState, EmptyState } from "@/components/shared/States"
@@ -22,7 +23,7 @@ import {
 import { useAsync } from "@/hooks/useAsync"
 import { rateCardsApi, ApiError } from "@/lib/api/client"
 import { formatDate, formatMoney } from "@/lib/format"
-import { rateCardMatchesView, type RateCardView } from "@/lib/rate-card-views"
+import { copyRateForToday, localDate, rateCardMatchesView, type RateCardView } from "@/lib/rate-card-views"
 import type {
   ChargeBasis,
   ChargeKind,
@@ -69,10 +70,10 @@ export function RateCardsAdminPage() {
   }, [rateCards.data, search, view])
 
   return (
-    <div>
+    <div className="uppercase">
       <PageHeader
         title="Rate Cards"
-        description="Lane pricing used to generate quotes. An inquiry with no matching rate card cannot be priced."
+        description="Daily airline rates by destination. Copy a card for today to preserve previous pricing."
         action={<RateCardFormDialog onSaved={rateCards.reload} />}
       />
 
@@ -109,7 +110,7 @@ function RateCardRecords({ rateCards, onChanged }: { rateCards: RateCard[]; onCh
     <div className="hidden max-h-[min(62vh,46rem)] overflow-auto rounded-xl border border-border lg:block">
       <table className="w-full text-sm">
         <thead className="sticky top-0 z-10 bg-background shadow-[0_1px_0_hsl(var(--border))]"><tr><th className="h-10 px-3 text-left font-medium">Lane</th><th className="px-3 text-left font-medium">Carrier / Mode</th><th className="px-3 text-left font-medium">Validity</th><th className="px-3 text-right font-medium">Minimum</th><th className="px-3 text-left font-medium">Breaks</th><th className="px-3 text-left font-medium">Charges</th><th className="px-3 text-right font-medium">Actions</th></tr></thead>
-        <tbody>{rateCards.map((card) => <tr key={card.id} className="border-t border-border hover:bg-muted/40"><td className="p-3 font-medium">{card.origin} → {card.destination}</td><td className="p-3"><span>{card.carrier || "Any carrier"}</span><Badge variant="outline" className="ml-2 text-[10px] uppercase">{card.mode}</Badge></td><td className="p-3 whitespace-nowrap"><p>{formatDate(card.valid_from)} – {formatDate(card.valid_until)}</p><p className="text-xs text-muted-foreground">{rateCardMatchesView(card, "expired") ? "Expired" : card.valid_from > new Date().toISOString().slice(0, 10) ? `Starts ${formatDate(card.valid_from)}` : rateCardMatchesView(card, "expiring") ? "Expires within 14 days" : "Active"}</p></td><td className="p-3 text-right font-medium tabular-nums">{formatMoney(card.minimum_charge, card.currency)}</td><td className="p-3 tabular-nums">{card.breaks.length}</td><td className="p-3 tabular-nums">{card.charges.length}</td><td className="p-3"><RateCardActions rateCard={card} onChanged={onChanged} /></td></tr>)}</tbody>
+        <tbody>{rateCards.map((card) => <tr key={card.id} className="border-t border-border hover:bg-muted/40"><td className="p-3 font-medium">{card.origin} → {card.destination}</td><td className="p-3"><span>{card.carrier || "Any carrier"}</span><Badge variant="outline" className="ml-2 text-[10px] uppercase">{card.mode}</Badge></td><td className="p-3 whitespace-nowrap"><p>{formatDate(card.valid_from)} – {formatDate(card.valid_until)}</p><p className="text-xs text-muted-foreground">{rateCardMatchesView(card, "expired") ? "Expired" : card.valid_from > localDate() ? `Starts ${formatDate(card.valid_from)}` : rateCardMatchesView(card, "expiring") ? "Expires within 14 days" : "Active"}</p></td><td className="p-3 text-right font-medium tabular-nums">{formatMoney(card.minimum_charge, card.currency)}</td><td className="p-3 tabular-nums">{card.breaks.length}</td><td className="p-3 tabular-nums">{card.charges.length}</td><td className="p-3"><RateCardActions rateCard={card} onChanged={onChanged} /></td></tr>)}</tbody>
       </table>
     </div>
     <div className="space-y-3 lg:hidden">{rateCards.map((card) => <RateCardRow key={card.id} rateCard={card} onChanged={onChanged} />)}</div>
@@ -134,7 +135,7 @@ function RateCardActions({ rateCard, onChanged }: { rateCard: RateCard; onChange
     }
   }
 
-  return <div className="flex items-center justify-end gap-2"><RateCardFormDialog rateCard={rateCard} onSaved={onChanged} /><Button variant="outline" size="icon-sm" aria-label={`Delete ${rateCard.origin} to ${rateCard.destination} rate card`} disabled={deleting} onClick={() => setConfirmOpen(true)}><Trash size={14} /></Button><ConfirmDialog open={confirmOpen} onOpenChange={setConfirmOpen} title="Delete rate card?" description={`${rateCard.origin} → ${rateCard.destination} · ${rateCard.carrier || "Any carrier"}. This pricing card will no longer be available for new quotes.`} pending={deleting} onConfirm={handleDelete} /></div>
+  return <div className="flex items-center justify-end gap-2"><RateCardFormDialog rateCard={rateCard} onSaved={onChanged} /><RateCardFormDialog rateCard={rateCard} copyForToday onSaved={onChanged} /><Button variant="outline" size="icon-sm" aria-label={`Delete ${rateCard.origin} to ${rateCard.destination} rate card`} disabled={deleting} onClick={() => setConfirmOpen(true)}><Trash size={14} /></Button><ConfirmDialog open={confirmOpen} onOpenChange={setConfirmOpen} title="Delete rate card?" description={`${rateCard.origin} → ${rateCard.destination} · ${rateCard.carrier || "Any carrier"}. This pricing card will no longer be available for new quotes.`} pending={deleting} onConfirm={handleDelete} /></div>
 }
 
 function RateCardRow({ rateCard, onChanged }: { rateCard: RateCard; onChanged: () => void }) {
@@ -214,22 +215,22 @@ function toInput(rc: RateCard): RateCardInput {
   }
 }
 
-function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSaved: () => void }) {
-  const editing = Boolean(rateCard)
+function RateCardFormDialog({ rateCard, copyForToday = false, onSaved }: { rateCard?: RateCard; copyForToday?: boolean; onSaved: () => void }) {
+  const editing = Boolean(rateCard) && !copyForToday
   const [open, setOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   const [form, setForm] = useState<RateCardInput>(
     rateCard
-      ? toInput(rateCard)
+      ? (copyForToday ? copyRateForToday(toInput(rateCard)) : toInput(rateCard))
       : {
           origin: "",
           destination: "",
           mode: "air",
           carrier: null,
           currency: "USD",
-          valid_from: new Date().toISOString().slice(0, 10),
-          valid_until: "",
+          valid_from: localDate(),
+          valid_until: localDate(),
           minimum_charge: "",
           breaks: [EMPTY_BREAK],
           charges: [],
@@ -239,15 +240,15 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
   function resetForm() {
     setForm(
       rateCard
-        ? toInput(rateCard)
+        ? (copyForToday ? copyRateForToday(toInput(rateCard)) : toInput(rateCard))
         : {
             origin: "",
             destination: "",
             mode: "air",
             carrier: null,
             currency: "USD",
-            valid_from: new Date().toISOString().slice(0, 10),
-            valid_until: "",
+            valid_from: localDate(),
+            valid_until: localDate(),
             minimum_charge: "",
             breaks: [EMPTY_BREAK],
             charges: [],
@@ -260,7 +261,8 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
     form.destination.trim() &&
     form.currency.trim().length === 3 &&
     form.valid_from &&
-    form.valid_until &&
+    form.valid_until >= form.valid_from &&
+    (form.mode !== "air" || (/^[A-Z]{3}$/.test(form.origin) && /^[A-Z]{3}$/.test(form.destination))) &&
     form.minimum_charge.trim() &&
     form.breaks.length > 0 &&
     form.breaks.every((b) => b.rate.trim() && b.unit) &&
@@ -311,9 +313,9 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
       }}
     >
       <DialogTrigger asChild>
-        {editing ? (
+        {rateCard ? (
           <Button variant="outline" size="sm">
-            Edit
+            {copyForToday ? "COPY FOR TODAY" : "EDIT"}
           </Button>
         ) : (
           <Button size="sm" className="gap-1.5">
@@ -322,9 +324,9 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="w-full! sm:max-w-6xl! gap-0" showCloseButton={!submitting}>
+      <DialogContent className="w-full! sm:max-w-6xl! gap-0 uppercase" showCloseButton={!submitting}>
         <DialogHeader className="border-b px-6 py-5">
-          <DialogTitle>{editing ? "Edit rate card" : "New rate card"}</DialogTitle>
+          <DialogTitle>{copyForToday ? "COPY RATE FOR TODAY" : editing ? "EDIT RATE CARD" : "NEW DAILY RATE CARD"}</DialogTitle>
           <SheetDescription>Configure lane pricing, weight breaks and additional charges.</SheetDescription>
         </DialogHeader>
 
@@ -333,15 +335,15 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="rate-origin">Origin</Label>
-              <Input id="rate-origin" value={form.origin} onChange={(e) => setForm((f) => ({ ...f, origin: e.target.value }))} placeholder="e.g. Lahore" />
+              <Input id="rate-origin" value={form.origin} onChange={(e) => setForm((f) => ({ ...f, origin: e.target.value.toUpperCase() }))} placeholder="LHE" maxLength={form.mode === "air" ? 3 : undefined} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="rate-destination">Destination</Label>
               <Input
                 id="rate-destination"
                 value={form.destination}
-                onChange={(e) => setForm((f) => ({ ...f, destination: e.target.value }))}
-                placeholder="e.g. London"
+                onChange={(e) => setForm((f) => ({ ...f, destination: e.target.value.toUpperCase() }))}
+                placeholder="DXB / LHR" maxLength={form.mode === "air" ? 3 : undefined}
               />
             </div>
             <div className="space-y-1.5">
@@ -361,10 +363,10 @@ function RateCardFormDialog({ rateCard, onSaved }: { rateCard?: RateCard; onSave
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="rate-carrier">Carrier</Label>
-              <Input
+              <AirlineInput
                 id="rate-carrier"
                 value={form.carrier ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, carrier: e.target.value || null }))}
+                onChange={(e) => setForm((f) => ({ ...f, carrier: e.target.value.toUpperCase() || null }))}
                 placeholder="Optional"
               />
             </div>

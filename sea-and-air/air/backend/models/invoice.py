@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Numeric, String, Text, text
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, Numeric, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db import Base
@@ -94,6 +94,17 @@ class Invoice(TimestampMixin, Base):
     references_snapshot: Mapped[str | None] = mapped_column(Text)
     remarks: Mapped[str | None] = mapped_column(Text)
     clauses_snapshot: Mapped[str | None] = mapped_column(Text)
+    quote_reference_snapshot: Mapped[str | None] = mapped_column(String(80))
+    quote_date_snapshot: Mapped[date | None] = mapped_column(Date)
+    quote_valid_until_snapshot: Mapped[date | None] = mapped_column(Date)
+    dimensions_snapshot: Mapped[str | None] = mapped_column(String(200))
+    description_snapshot: Mapped[str | None] = mapped_column(Text)
+    ready_date_snapshot: Mapped[date | None] = mapped_column(Date)
+    schedule_snapshot: Mapped[list[dict] | None] = mapped_column(JSON)
+    email_status: Mapped[str] = mapped_column(String(30), nullable=False, default="not_sent")
+    email_recipient: Mapped[str | None] = mapped_column(String(320))
+    email_error: Mapped[str | None] = mapped_column(Text)
+    emailed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     quote: Mapped["Quote"] = relationship(back_populates="invoices")  # noqa: F821
     company: Mapped["Company"] = relationship()  # noqa: F821

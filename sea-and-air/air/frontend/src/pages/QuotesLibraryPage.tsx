@@ -1,3 +1,4 @@
+import { EmailSettings } from "@/components/shared/EmailSettings"
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { MagnifyingGlass, Plus, Scales } from "@phosphor-icons/react"
@@ -26,6 +27,7 @@ export function QuotesLibraryPage() {
     const [quotes, inquiries, customers] = await Promise.all([quotesApi.list(), inquiriesApi.list(), customersApi.list()])
     return { quotes, inquiries, customers }
   }, [])
+  const [destination, setDestination] = useState("all")
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState<QuoteStatus | "all">("all")
   const inquiryById = useMemo(() => new Map((records.data?.inquiries ?? []).map((inquiry) => [inquiry.id, inquiry])), [records.data?.inquiries])
@@ -33,6 +35,7 @@ export function QuotesLibraryPage() {
   const visible = useMemo(() => {
     const term = search.trim().toLocaleLowerCase()
     return (records.data?.quotes ?? [])
+      .filter((quote) => destination === "all" || quote.destination === destination)
       .filter((quote) => status === "all" || effectiveQuoteStatus(quote) === status)
       .filter((quote) => {
         if (!term) return true
@@ -42,13 +45,15 @@ export function QuotesLibraryPage() {
           .some((value) => String(value ?? "").toLocaleLowerCase().includes(term))
       })
       .toSorted((a, b) => b.updated_at.localeCompare(a.updated_at))
-  }, [customerById, inquiryById, records.data?.quotes, search, status])
+  }, [customerById, inquiryById, records.data?.quotes, search, status, destination])
 
   if (records.loading) return <LoadingState rows={7} />
   if (records.error || !records.data) return <ErrorState message={records.error ?? "Could not load quotes."} onRetry={records.reload} />
 
-  return <div>
+  return <div className="uppercase">
     <PageHeader title="Quotes" description="Search every commercial offer and return to the inquiry comparison workspace." action={<Button asChild className="gap-1.5"><Link to="/quotes/new"><Plus size={16} /> New Quote</Link></Button>} />
+    <EmailSettings />
+    <select aria-label="Filter destination" className="mb-3 rounded-md border bg-background p-2" value={destination} onChange={(e) => setDestination(e.target.value)}><option value="all">ALL DESTINATIONS</option>{[...new Set(records.data.quotes.map((q) => q.destination))].sort().map((code) => <option key={code}>{code}</option>)}</select>
     <div className="mb-5 flex flex-col gap-2 sm:flex-row">
       <div className="relative min-w-0 flex-1">
         <MagnifyingGlass size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -60,7 +65,7 @@ export function QuotesLibraryPage() {
       </Select>
       <p className="self-center text-sm text-muted-foreground"><span className="font-medium tabular-nums text-foreground">{visible.length}</span> result{visible.length === 1 ? "" : "s"}</p>
     </div>
-    {visible.length === 0 ? <EmptyState icon={<Scales size={32} />} title="No quotes match this view" description="Try a different search or status." action={(search || status !== "all") ? <Button variant="outline" onClick={() => { setSearch(""); setStatus("all") }}>Clear filters</Button> : <Button asChild><Link to="/quotes/new">Create a quote</Link></Button>} /> : <QuoteRecords quotes={visible} inquiryById={inquiryById} customerById={customerById} />}
+    {visible.length === 0 ? <EmptyState icon={<Scales size={32} />} title="No quotes match this view" description="Try a different search or status." action={(search || status !== "all") ? <Button variant="outline" onClick={() => { setSearch(""); setStatus("all"); setDestination("all") }}>Clear filters</Button> : <Button asChild><Link to="/quotes/new">Create a quote</Link></Button>} /> : <QuoteRecords quotes={visible} inquiryById={inquiryById} customerById={customerById} />}
   </div>
 }
 

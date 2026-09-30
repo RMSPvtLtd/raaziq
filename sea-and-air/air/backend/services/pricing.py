@@ -10,11 +10,12 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from config import Settings, get_settings
 from utils.errors import NoApplicableRate
+from utils.locations import carrier_name, location_aliases
 from models.enums import ChargeBasis, ChargeKind, TransportMode, UnitOfMeasure
 from models.inquiry import Inquiry
 from models.rate_card import RateCard, RateCardBreak, RateCardCharge
@@ -40,6 +41,7 @@ class PricedLineItem:
 class PricedQuote:
     currency: str
     rate_card_id: int
+    valid_until: date
     carrier: str | None = None
     line_items: list[PricedLineItem] = field(default_factory=list)
     subtotal: Decimal = Decimal("0")
@@ -71,13 +73,13 @@ def _matching_rate_cards_stmt(inquiry: Inquiry, today: date):
     return (
         select(RateCard)
         .where(
-            RateCard.origin == inquiry.origin,
-            RateCard.destination == inquiry.destination,
+            func.upper(RateCard.origin).in_(location_aliases(inquiry.origin)),
+            func.upper(RateCard.destination).in_(location_aliases(inquiry.destination)),
             RateCard.mode == inquiry.mode,
             RateCard.valid_from <= today,
             RateCard.valid_until >= today,
         )
-        .order_by(RateCard.valid_from.desc())
+        .order_by(RateCard.valid_from.desc(), RateCard.id.desc())
     )
 
 
@@ -111,9 +113,9 @@ def _select_rate_cards(session: Session, inquiry: Inquiry, today: date) -> list[
     for card in all_matches:
         # all_matches is already valid_from-desc, so the first card seen per
         # carrier is that carrier's most recent one -- nothing to compare.
-        best_by_carrier.setdefault(card.carrier, card)
+        best_by_carrier.setdefault(carrier_name(card.carrier), card)
 
-    return sorted(best_by_carrier.values(), key=lambda c: (c.carrier is None, (c.carrier or "").lower()))
+    return sorted(best_by_carrier.values(), key=lambda c: (carrier_name(c.carrier) is None, carrier_name(c.carrier) or ""))
 
 
 def _bound_matches(value: Decimal, lower: Decimal | None, upper: Decimal | None) -> bool:
@@ -241,7 +243,8 @@ def _price_with_rate_card(rate_card: RateCard, inquiry: Inquiry, settings: Setti
     return PricedQuote(
         currency=rate_card.currency,
         rate_card_id=rate_card.id,
-        carrier=rate_card.carrier,
+        valid_until=rate_card.valid_until,
+        carrier=carrier_name(rate_card.carrier),
         line_items=line_items,
         subtotal=subtotal,
         markup_amount=markup_amount,
@@ -265,4 +268,13 @@ def price_all_matching(session: Session, inquiry: Inquiry, *, today: date | None
     settings = get_settings()
     today = today or date.today()
     rate_cards = _select_rate_cards(session, inquiry, today)
-    return [_price_with_rate_card(rate_card, inquiry, settings) for rate_card in rate_cards]
+    priced = []
+    for rate_card in rate_cards:
+        try:
+            priced.append(_price_with_rate_card(rate_card, inquiry, settings))
+        except NoApplicableRate:
+            # A carrier with no weight/volume tier must not hide other offers.
+            continue
+    if not priced:
+        raise NoApplicableRate("No carrier has an applicable rate break for this shipment")
+    return priced

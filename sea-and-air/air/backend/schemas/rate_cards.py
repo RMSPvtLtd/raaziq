@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from models.enums import ChargeBasis, ChargeKind, TransportMode, UnitOfMeasure
 from schemas.money import MoneyAmount
+from utils.locations import carrier_name, validate_location
 
 # RateCardBreak.min_weight/max_weight/min_volume/max_volume are NUMERIC(12,3).
 BreakBound = Annotated[Decimal, Field(ge=Decimal("0"), max_digits=12, decimal_places=3)]
@@ -86,6 +87,10 @@ class RateCardCreate(BaseModel):
 
     @model_validator(mode="after")
     def _validity_window(self) -> "RateCardCreate":
+        self.origin = validate_location(self.origin, self.mode)
+        self.destination = validate_location(self.destination, self.mode)
+        self.carrier = carrier_name(self.carrier)
+        self.currency = self.currency.strip().upper()
         if self.valid_until < self.valid_from:
             raise ValueError("valid_until must not be before valid_from")
         return self

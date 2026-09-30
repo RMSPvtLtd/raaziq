@@ -95,6 +95,14 @@ class Settings(BaseSettings):
     # email" action itself fails with a clear EmailNotConfigured error.
     resend_api_key: str | None = None
     resend_from_email: str = "Raaziq International <onboarding@resend.dev>"
+    # Gmail requires a sender account and its app password; recipients are
+    # separate, editable per issuing company. No credentials go to the UI.
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    notification_email: str | None = None
 
     @property
     def cors_origin_list(self) -> list[str]:

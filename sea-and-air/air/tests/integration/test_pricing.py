@@ -333,7 +333,7 @@ def test_price_all_matching_single_carrier_still_returns_one(db_session):
     priced_list = price_all_matching(db_session, inquiry, today=TODAY)
 
     assert len(priced_list) == 1
-    assert priced_list[0].carrier == "TestAir"
+    assert priced_list[0].carrier == "TESTAIR"
 
 
 def test_price_all_matching_one_quote_per_carrier(db_session):
@@ -345,7 +345,7 @@ def test_price_all_matching_one_quote_per_carrier(db_session):
     priced_list = price_all_matching(db_session, inquiry, today=TODAY)
 
     carriers = {p.carrier for p in priced_list}
-    assert carriers == {"PIA", "Emirates SkyCargo"}
+    assert carriers == {"PIA", "EMIRATES"}
     assert len(priced_list) == 2
 
 

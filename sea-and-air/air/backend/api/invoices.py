@@ -8,6 +8,7 @@ from schemas.invoices import InvoiceCancelRequest, InvoiceCreateRequest, Invoice
 from utils.security import get_current_ops_user
 from services.invoices import cancel_invoice, create_invoice_from_quote, email_invoice, get_invoice, list_invoices
 from services.pdf_documents import render_invoice_pdf
+from services.email import delivery_result
 
 router = APIRouter(prefix="/invoices", tags=["invoices"], dependencies=[Depends(get_current_ops_user)])
 
@@ -19,13 +20,14 @@ quote_router = APIRouter(prefix="/quotes", tags=["invoices"], dependencies=[Depe
 
 @quote_router.post("/{quote_id}/invoice", response_model=InvoiceRead, status_code=201)
 def create_from_quote(quote_id: int, payload: InvoiceCreateRequest, db: Session = Depends(get_db)) -> Invoice:
-    return create_invoice_from_quote(
+    invoice = create_invoice_from_quote(
         db,
         quote_id,
         company_id=payload.company_id,
         replaces_invoice_id=payload.replaces_invoice_id,
         remarks=payload.remarks,
     )
+    return email_invoice(db, invoice.id, automatic=True)
 
 
 @router.get("", response_model=list[InvoiceRead])
@@ -51,8 +53,7 @@ def download_pdf(invoice_id: int, db: Session = Depends(get_db)) -> Response:
 
 @router.post("/{invoice_id}/email", status_code=200)
 def email(invoice_id: int, db: Session = Depends(get_db)) -> dict:
-    email_invoice(db, invoice_id)
-    return {"sent": True}
+    return delivery_result(email_invoice(db, invoice_id))
 
 
 @router.post("/{invoice_id}/cancel", response_model=InvoiceRead)

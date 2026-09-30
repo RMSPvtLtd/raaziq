@@ -19,6 +19,7 @@ would make the audit trail ambiguous exactly where it matters most.
 """
 
 import json
+from copy import deepcopy
 from datetime import date, datetime, timezone
 
 from sqlalchemy import select
@@ -31,7 +32,7 @@ from models.enums import EventSource, InvoiceStatus, QuoteStatus
 from models.invoice import Invoice, InvoiceLineItem, InvoiceNumberCounter
 from models.quote import Quote
 from services.companies import get_company
-from services.email import send_pdf_email
+from services.email import deliver_document_email
 from services.pdf_documents import render_invoice_pdf
 from services.pricing import compute_chargeable_weight
 from services.transitions import record_note
@@ -137,12 +138,19 @@ def create_invoice_from_quote(
         weight_kg_snapshot=inquiry.weight_kg,
         volume_cbm_snapshot=inquiry.volume_cbm,
         chargeable_weight_kg_snapshot=compute_chargeable_weight(inquiry, settings),
-        carrier_snapshot=shipment.carrier,
+        carrier_snapshot=quote.carrier or shipment.carrier,
         voyage_flight_number_snapshot=shipment.voyage_flight_number,
         job_number_snapshot=shipment.job_number,
         references_snapshot=references_snapshot,
         remarks=remarks,
         clauses_snapshot=quote.clauses,
+        quote_reference_snapshot=f"Q-{quote.root_quote_id or quote.id} REV {quote.revision_number}",
+        quote_date_snapshot=quote.created_at.date(),
+        quote_valid_until_snapshot=quote.valid_until,
+        dimensions_snapshot=inquiry.dimensions,
+        description_snapshot=inquiry.description,
+        ready_date_snapshot=inquiry.ready_date,
+        schedule_snapshot=deepcopy(quote.schedule_snapshot),
     )
     # Added to the session before appending line items / setting the
     # quote<->invoice back-populate, so autoflush doesn't warn about a
@@ -198,7 +206,7 @@ def cancel_invoice(session: Session, invoice_id: int, *, reason: str, actor: str
     return invoice
 
 
-def email_invoice(session: Session, invoice_id: int) -> None:
+def email_invoice(session: Session, invoice_id: int, *, automatic: bool = False) -> Invoice:
     """Emails the invoice's PDF to the customer's current address on file
     (not a snapshot -- if the customer's email changed since the invoice
     was issued, the correspondence should still reach them)."""
@@ -207,15 +215,15 @@ def email_invoice(session: Session, invoice_id: int) -> None:
     if customer is None:
         raise NotFound(f"Customer {invoice.customer_id} not found")
 
-    pdf_bytes = render_invoice_pdf(invoice)
-    send_pdf_email(
+    return deliver_document_email(
+        session, invoice, company=invoice.company, automatic=automatic,
         to_email=customer.email,
         subject=f"Invoice {invoice.invoice_number} - Raaziq International",
         body_text=(
             f"Dear {customer.name},\n\nPlease find attached invoice {invoice.invoice_number} "
             f"for {invoice.origin_snapshot} to {invoice.destination_snapshot}.\n\nRegards,\nRaaziq International"
         ),
-        pdf_bytes=pdf_bytes,
+        pdf_factory=lambda: render_invoice_pdf(invoice, customer_safe=True),
         pdf_filename=f"{invoice.invoice_number}.pdf",
     )
 

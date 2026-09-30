@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Link } from "react-router-dom"
 import { Receipt } from "@phosphor-icons/react"
 import { PageHeader } from "@/components/shared/PageHeader"
@@ -10,8 +11,8 @@ import { useAsync } from "@/hooks/useAsync"
 import { useCustomerAuth } from "@/hooks/useCustomerAuth"
 import { customerPortalApi } from "@/lib/api/client"
 import { formatDate, formatMoney } from "@/lib/format"
-import { prepareQuoteComparison } from "@/lib/quote-comparison"
-import type { Quote, QuoteStatus } from "@/lib/api/types"
+import { prepareQuoteComparison, effectiveQuoteStatus } from "@/lib/quote-comparison"
+import type { CustomerQuote as Quote, QuoteStatus } from "@/lib/api/types"
 
 const STATUS_LABEL: Record<QuoteStatus, string> = {
   draft: "Draft",
@@ -39,15 +40,17 @@ function groupByInquiry(quotes: Quote[]): Quote[][] {
 
 export function CustomerQuotesPage() {
   const { token } = useCustomerAuth()
+  const [destination, setDestination] = useState("all")
   const quotes = useAsync(() => customerPortalApi.quotes(token!), [token])
 
   return (
-    <div>
+    <div className="uppercase">
       <PageHeader
         title="Quotes"
         description="Every quote we've prepared for you -- when a lane has more than one carrier option, they're grouped together for comparison."
       />
 
+      <select aria-label="Filter destination" value={destination} onChange={(e) => setDestination(e.target.value)} className="mb-4 rounded-md border bg-background p-2"><option value="all">ALL DESTINATIONS</option>{[...new Set((quotes.data ?? []).map((q) => q.destination))].sort().map((code) => <option key={code}>{code}</option>)}</select>
       {quotes.loading && <LoadingState rows={5} />}
       {!quotes.loading && quotes.error && <ErrorState message={quotes.error} onRetry={quotes.reload} />}
       {!quotes.loading && !quotes.error && (quotes.data?.length ?? 0) === 0 && (
@@ -55,7 +58,7 @@ export function CustomerQuotesPage() {
       )}
       {!quotes.loading && !quotes.error && (quotes.data?.length ?? 0) > 0 && (
         <div className="space-y-4">
-          {groupByInquiry(quotes.data!).map((group) => (
+          {groupByInquiry(quotes.data!.filter((q) => destination === "all" || q.destination === destination)).map((group) => (
             <InquiryGroupCard key={group[0].inquiry_id} quotes={group} />
           ))}
         </div>
@@ -106,20 +109,20 @@ function InquiryGroupCard({ quotes }: { quotes: Quote[] }) {
                   </TableCell>
                   <TableCell>{quote.carrier ?? "—"}{quote.id === lowestQuoteId && <Badge className="ml-2 bg-status-success-bg text-status-success">Lowest price</Badge>}</TableCell>
                   <TableCell className="flex flex-wrap items-center gap-1.5">
-                    <Badge variant="outline">{STATUS_LABEL[quote.status]}</Badge>
+                    <Badge variant="outline">{STATUS_LABEL[effectiveQuoteStatus(quote)]}</Badge>
                     {!quote.is_current && <Badge variant="secondary">Superseded</Badge>}
                   </TableCell>
                   <TableCell className="tabular-nums">{formatMoney(quote.total, quote.currency)}</TableCell>
                   <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
                     {formatDate(quote.valid_until)}
                   </TableCell>
-                  <TableCell className="text-right"><div className="flex justify-end gap-2"><Button asChild variant="outline" size="sm"><Link to={`/customer/quotes/${quote.id}`}>View breakdown</Link></Button>{quote.is_current && (quote.status === "draft" || quote.status === "sent") && <Button asChild size="sm"><Link to={`/customer/quotes/${quote.id}?accept=true`}>Select offer</Link></Button>}</div></TableCell>
+                  <TableCell className="text-right"><div className="flex justify-end gap-2"><Button asChild variant="outline" size="sm"><Link to={`/customer/quotes/${quote.id}`}>View breakdown</Link></Button>{quote.is_current && (effectiveQuoteStatus(quote) === "draft" || effectiveQuoteStatus(quote) === "sent") && <Button asChild size="sm"><Link to={`/customer/quotes/${quote.id}?accept=true`}>Select offer</Link></Button>}</div></TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
-        <ul className="space-y-2 p-4 md:hidden" aria-label="Carrier offers">{ordered.map((quote) => <li key={quote.id} className={!quote.is_current ? "rounded-lg border border-border p-3 opacity-60" : "rounded-lg border border-border p-3"}><div className="flex items-start justify-between gap-3"><div><Link to={`/customer/quotes/${quote.id}`} className="font-medium tabular-nums hover:underline">Q-{quote.root_quote_id ?? quote.id} Rev {quote.revision_number}</Link><p className="text-sm text-muted-foreground">{quote.carrier ?? "Unspecified carrier"}</p></div><Badge variant="outline">{STATUS_LABEL[quote.status]}</Badge></div><div className="mt-3 flex items-end justify-between gap-3"><p className="text-xs text-muted-foreground">Valid {formatDate(quote.valid_until)}</p><div className="text-right">{quote.id === lowestQuoteId && <p className="text-xs text-status-success">Lowest price</p>}<p className="font-heading font-semibold tabular-nums">{formatMoney(quote.total, quote.currency)}</p></div></div><div className="mt-3 grid grid-cols-2 gap-2"><Button asChild variant="outline" size="sm"><Link to={`/customer/quotes/${quote.id}`}>View breakdown</Link></Button>{quote.is_current && (quote.status === "draft" || quote.status === "sent") && <Button asChild size="sm"><Link to={`/customer/quotes/${quote.id}?accept=true`}>Select offer</Link></Button>}</div></li>)}</ul>
+        <ul className="space-y-2 p-4 md:hidden" aria-label="Carrier offers">{ordered.map((quote) => <li key={quote.id} className={!quote.is_current ? "rounded-lg border border-border p-3 opacity-60" : "rounded-lg border border-border p-3"}><div className="flex items-start justify-between gap-3"><div><Link to={`/customer/quotes/${quote.id}`} className="font-medium tabular-nums hover:underline">Q-{quote.root_quote_id ?? quote.id} Rev {quote.revision_number}</Link><p className="text-sm text-muted-foreground">{quote.carrier ?? "Unspecified carrier"}</p></div><Badge variant="outline">{STATUS_LABEL[effectiveQuoteStatus(quote)]}</Badge></div><div className="mt-3 flex items-end justify-between gap-3"><p className="text-xs text-muted-foreground">Valid {formatDate(quote.valid_until)}</p><div className="text-right">{quote.id === lowestQuoteId && <p className="text-xs text-status-success">Lowest price</p>}<p className="font-heading font-semibold tabular-nums">{formatMoney(quote.total, quote.currency)}</p></div></div><div className="mt-3 grid grid-cols-2 gap-2"><Button asChild variant="outline" size="sm"><Link to={`/customer/quotes/${quote.id}`}>View breakdown</Link></Button>{quote.is_current && (effectiveQuoteStatus(quote) === "draft" || effectiveQuoteStatus(quote) === "sent") && <Button asChild size="sm"><Link to={`/customer/quotes/${quote.id}?accept=true`}>Select offer</Link></Button>}</div></li>)}</ul>
       </CardContent>
     </Card>
   )

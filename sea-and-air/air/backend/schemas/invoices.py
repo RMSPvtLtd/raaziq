@@ -61,6 +61,17 @@ class InvoiceRead(BaseModel):
     job_number_snapshot: str | None
     remarks: str | None
     clauses_snapshot: str | None
+    quote_reference_snapshot: str | None
+    quote_date_snapshot: date | None
+    quote_valid_until_snapshot: date | None
+    dimensions_snapshot: str | None
+    description_snapshot: str | None
+    ready_date_snapshot: date | None
+    schedule_snapshot: list[dict] | None
+    email_status: str
+    email_recipient: str | None
+    email_error: str | None
+    emailed_at: datetime | None
     created_at: datetime
     line_items: list[InvoiceLineItemRead]
 

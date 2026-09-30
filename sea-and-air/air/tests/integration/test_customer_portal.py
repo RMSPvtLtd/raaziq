@@ -196,7 +196,7 @@ def test_customer_accepting_one_sibling_quote_supersedes_the_others(client, db_s
     inquiry = make_inquiry(db_session, mine)
     quotes = generate_quotes(db_session, inquiry.id)  # no today= override, see note above
     pia = next(q for q in quotes if q.carrier == "PIA")
-    emirates = next(q for q in quotes if q.carrier == "Emirates SkyCargo")
+    emirates = next(q for q in quotes if q.carrier == "EMIRATES")
     db_session.commit()
 
     token = _login(client, "orient.traders")
@@ -214,7 +214,7 @@ def test_customer_cannot_accept_an_already_accepted_quote_twice_from_a_different
     inquiry = make_inquiry(db_session, mine)
     quotes = generate_quotes(db_session, inquiry.id)  # no today= override, see note above
     pia = next(q for q in quotes if q.carrier == "PIA")
-    emirates = next(q for q in quotes if q.carrier == "Emirates SkyCargo")
+    emirates = next(q for q in quotes if q.carrier == "EMIRATES")
     db_session.commit()
 
     token = _login(client, "orient.traders")

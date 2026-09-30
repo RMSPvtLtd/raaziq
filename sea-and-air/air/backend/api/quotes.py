@@ -18,6 +18,7 @@ from schemas.quotes import (
 from schemas.shipments import ShipmentRead
 from utils.security import get_current_ops_user
 from services.pdf_documents import render_quote_pdf
+from services.email import delivery_result
 from services.quotes import (
     LineItemOverride,
     ManualLineItem,
@@ -53,7 +54,8 @@ def create_manual(payload: QuoteManualCreateRequest, db: Session = Depends(get_d
         for li in payload.line_items
     ]
     return create_manual_quote(
-        db, payload.inquiry_id, carrier=payload.carrier, currency=payload.currency, line_items=line_items
+        db, payload.inquiry_id, carrier=payload.carrier, currency=payload.currency, line_items=line_items,
+        valid_until=payload.valid_until, clauses=payload.clauses,
     )
 
 
@@ -107,14 +109,14 @@ def download_pdf(quote_id: int, db: Session = Depends(get_db)) -> Response:
 
 @router.post("/{quote_id}/email", status_code=200)
 def email(quote_id: int, db: Session = Depends(get_db)) -> dict:
-    email_quote(db, quote_id)
-    return {"sent": True}
+    return delivery_result(email_quote(db, quote_id))
 
 
 @router.post("/{quote_id}/send", response_model=QuoteRead)
 def send(quote_id: int, db: Session = Depends(get_db)) -> Quote:
-    """MVP behavior: marks the quote as sent only; no email is generated."""
-    return send_quote(db, quote_id)
+    """Publish once, then record automatic delivery independently."""
+    send_quote(db, quote_id)
+    return email_quote(db, quote_id, automatic=True)
 
 
 @router.post("/{quote_id}/accept", response_model=ShipmentRead)

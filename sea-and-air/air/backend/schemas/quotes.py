@@ -54,6 +54,11 @@ class QuoteRead(BaseModel):
     total: Decimal
     valid_until: date
     clauses: str | None
+    schedule_snapshot: list[dict] | None = None
+    email_status: str = "not_sent"
+    email_recipient: str | None = None
+    email_error: str | None = None
+    emailed_at: datetime | None = None
     revision_number: int
     root_quote_id: int | None
     is_current: bool
@@ -118,3 +123,5 @@ class QuoteManualCreateRequest(BaseModel):
     carrier: str = Field(min_length=1, max_length=120)
     currency: str = Field(min_length=3, max_length=3)
     line_items: list[ManualLineItemRequest] = Field(min_length=1, max_length=50)
+    valid_until: date | None = None
+    clauses: str | None = Field(default=None, max_length=4000)

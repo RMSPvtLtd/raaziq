@@ -1,13 +1,14 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db import Base
 from models._mixins import TimestampMixin
 from models._types import portable_enum
 from models.enums import ChargeKind, InvoiceStatus, QuoteStatus
+from utils.locations import location_code
 
 
 class Quote(TimestampMixin, Base):
@@ -52,6 +53,11 @@ class Quote(TimestampMixin, Base):
     # copied onto any invoice generated from this quote (Invoice.clauses_snapshot)
     # -- see services.quotes.set_quote_clauses.
     clauses: Mapped[str | None] = mapped_column(Text)
+    schedule_snapshot: Mapped[list[dict] | None] = mapped_column(JSON)
+    email_status: Mapped[str] = mapped_column(String(20), nullable=False, default="not_sent")
+    email_recipient: Mapped[str | None] = mapped_column(String(254))
+    email_error: Mapped[str | None] = mapped_column(Text)
+    emailed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # --- rejection -- set only by services.quotes.reject_quote ---
     rejected_reason: Mapped[str | None] = mapped_column(Text)
@@ -98,11 +104,11 @@ class Quote(TimestampMixin, Base):
         """Convenience passthrough so QuoteRead can show the lane without a
         second request for the inquiry -- used on the sibling-quote
         comparison view (multiple quotes for one inquiry)."""
-        return self.inquiry.origin
+        return location_code(self.inquiry.origin)
 
     @property
     def destination(self) -> str:
-        return self.inquiry.destination
+        return location_code(self.inquiry.destination)
 
     @property
     def is_current(self) -> bool:
